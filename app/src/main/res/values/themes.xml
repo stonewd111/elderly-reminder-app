@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ElderReminder" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#F5F7FA</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowBackground">#F5F7FA</item>
+    </style>
+
+    <style name="Theme.ElderReminder.Alarm" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#E5362F</item>
+        <item name="android:navigationBarColor">#C4120C</item>
+        <item name="android:windowBackground">#E5362F</item>
+    </style>
+</resources>
