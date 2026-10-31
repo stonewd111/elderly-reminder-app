@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
@@ -27,6 +29,7 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private val handler = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var tone: ToneGenerator? = null
+    private var player: MediaPlayer? = null
     private var mode = "VOICE"
     private var title = "提醒事项"
     private var startedAt = 0L
@@ -144,10 +147,32 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun startBeep() {
+        // 用系统闹钟铃声循环播放，声音响亮、不依赖 TTS/ToneGenerator 硬件。
+        if (startPlayerLoop()) return
         runCatching {
             tone = ToneGenerator(AudioManager.STREAM_ALARM, 100)
             handler.post(repeatBeep)
         }.onFailure { finishAlarm() }
+    }
+
+    /** 循环播放系统闹钟铃声，成功返回 true。 */
+    private fun startPlayerLoop(): Boolean {
+        return runCatching {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(this@AlarmActivity, uri)
+                isLooping = true
+                prepare()
+                start()
+            }
+            true
+        }.getOrDefault(false)
     }
 
     private fun maxAlarmVolume() {
@@ -177,10 +202,17 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         handler.removeCallbacksAndMessages(null)
         runCatching { tts?.stop(); tts?.shutdown() }
         runCatching { tone?.stopTone(); tone?.release() }
+        releasePlayer()
         runCatching {
             (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).cancel()
         }
         finish()
+    }
+
+    private fun releasePlayer() {
+        runCatching { player?.stop() }
+        runCatching { player?.release() }
+        player = null
     }
 
     override fun onDestroy() {
@@ -188,6 +220,7 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             handler.removeCallbacksAndMessages(null)
             runCatching { tts?.stop(); tts?.shutdown() }
             runCatching { tone?.stopTone(); tone?.release() }
+            releasePlayer()
             runCatching { (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).cancel() }
         }
         super.onDestroy()

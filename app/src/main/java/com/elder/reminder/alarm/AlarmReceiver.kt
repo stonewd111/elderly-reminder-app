@@ -69,7 +69,9 @@ class AlarmReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSound(null)
+            // 关键：给通知设置真实声音（系统闹钟提示音），
+            // 这样即使全屏 Activity 被系统限制无法弹出，也一定有声音提醒。
+            .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM))
             .setVibrate(longArrayOf(0, 600, 400, 600))
             .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)

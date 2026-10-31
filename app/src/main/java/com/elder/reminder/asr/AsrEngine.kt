@@ -82,7 +82,11 @@ object AsrEngine {
             config.decodingMethod = "greedy_search"
             config.maxActivePaths = 4
 
-            recognizer = OnlineRecognizer(ctx.assets, config)
+            // 模型已复制到 filesDir，用绝对路径（file 模式）加载。
+            // 注意：不要用 OnlineRecognizer(assets, config)——asset 模式要求相对路径，
+            // 与 filesDir 绝对路径不匹配会导致 native 崩溃。
+            // 显式传 null（第一个参数 assetManager）走 newFromFile，用绝对路径。
+            recognizer = OnlineRecognizer(null, config)
             _status.value = AsrStatus.READY
             true
         } catch (t: Throwable) {
