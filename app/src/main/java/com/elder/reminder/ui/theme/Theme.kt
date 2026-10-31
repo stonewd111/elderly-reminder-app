@@ -25,6 +25,8 @@ val GreenTag = Color(0xFF12B76A)
 val PurpleTag = Color(0xFF7A5AF8)
 val AlarmRed = Color(0xFFE5362F)
 val AlarmRedDark = Color(0xFFC4120C)
+val AlarmBlue = Color(0xFF1E6FEB)
+val AlarmBlueDark = Color(0xFF0F4FBF)
 val CardWhite = Color(0xFFFFFFFF)
 
 /**

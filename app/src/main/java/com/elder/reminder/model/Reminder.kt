@@ -16,7 +16,9 @@ data class Reminder(
     val done: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     /** 提醒分类：medication 服药 / health 测血压血糖 / exercise 运动 / water 饮水 / other 其他 */
-    val category: String = "other"
+    val category: String = "other",
+    /** 药名（仅服药类提醒需要，可空） */
+    val drug: String = ""
 ) {
     enum class Mode { VOICE, BEEP }
 
@@ -64,6 +66,7 @@ data class Reminder(
         put("done", done)
         put("createdAt", createdAt)
         put("category", category)
+        put("drug", drug)
         put("repeat", repeatToJson(repeat))
     }
 
@@ -77,7 +80,8 @@ data class Reminder(
             enabled = o.optBoolean("enabled", true),
             done = o.optBoolean("done", false),
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
-            category = o.optString("category", "other")
+            category = o.optString("category", "other"),
+            drug = o.optString("drug", "")
         )
 
         private fun repeatToJson(r: Repeat): JSONObject = JSONObject().apply {

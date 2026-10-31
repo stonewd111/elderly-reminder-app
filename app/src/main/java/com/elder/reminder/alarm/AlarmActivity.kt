@@ -45,12 +45,14 @@ class AlarmActivity : ComponentActivity() {
             androidx.compose.ui.platform.ComposeView(this).apply {
                 setContent {
                     val level by com.elder.reminder.data.FontPrefs.level.collectAsState()
+                    val theme by com.elder.reminder.data.AlarmThemePrefs.theme.collectAsState()
                     com.elder.reminder.ui.theme.ElderTheme(scale = com.elder.reminder.data.FontPrefs.scaleOf(level)) {
                         AlarmScreen(
                             title = screenTitle,
                             modeText = if (screenMode == "VOICE") "语音提醒" else "滴滴滴提醒",
                             repeatText = screenRepeat,
                             timeMillis = screenTime,
+                            alarmTheme = theme,
                             onStop = { finishAlarm() }
                         )
                     }

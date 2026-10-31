@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -73,9 +74,13 @@ fun EditorScreen(
     var triggerAt by remember(initKey, spokenText) { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
     var mode by remember(initKey) { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
     var category by remember(initKey) { mutableStateOf(initial?.category ?: Reminder.Category.OTHER) }
+    var drug by remember(initKey) { mutableStateOf(initial?.drug ?: "") }
     var repeat by remember(initKey) { mutableStateOf<Reminder.Repeat>(initial?.repeat ?: Reminder.Repeat.None) }
     var step by remember { mutableIntStateOf(1) }
     var showDelete by remember { mutableStateOf(false) }
+    // 分类选择弹窗：1 选大类 → 2 选次小类（pickingCategory 存大类 label，区分自定义大类）
+    var showCategoryPicker by remember { mutableStateOf(false) }
+    var pickingCategory by remember { mutableStateOf<String?>(null) }
 
     fun save() {
         val t = title.trim()
@@ -92,7 +97,8 @@ fun EditorScreen(
             enabled = true,
             done = false,
             createdAt = initial?.createdAt ?: System.currentTimeMillis(),
-            category = category
+            category = category,
+            drug = drug.trim()
         )
         ReminderRepository.upsert(reminder)
         ReminderScheduler.schedule(context, reminder)
@@ -110,9 +116,11 @@ fun EditorScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             if (step == 1) {
+                // 语音录入卡片（手动输入已按用户要求删除——直接输入提醒内容即可）
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ModeCard("🎙", "语音录入", "说出提醒内容", true, Modifier.weight(1f)) { onVoiceEdit(initial?.id) }
-                    ModeCard("✏️", "手动输入", "自己输入内容", false, Modifier.weight(1f)) { /* 当前即手动 */ }
+                    // 手动输入已删除，右侧用"直接填写"说明卡片占位，保持版面均衡
+                    ModeCard("✏️", "直接填写", "在下方输入内容", false, Modifier.weight(1f)) { }
                 }
                 Spacer(Modifier.height(16.dp))
 
@@ -127,68 +135,41 @@ fun EditorScreen(
                     minLines = 1
                 )
 
-                Spacer(Modifier.height(10.dp))
-                Text("常用事项", fontSize = 15.sp, color = TextSecondary)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("吃药", "喝水", "散步", "量血压").forEach { name ->
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White,
-                            modifier = Modifier.clickable { title = name }
-                        ) {
-                            Text(name, fontSize = 15.sp, color = TextPrimary, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
-                        }
-                    }
+                // 药名（仅服药类提醒显示）
+                if (category == Reminder.Category.MEDICATION) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = drug,
+                        onValueChange = { drug = it },
+                        label = { Text("💊 药名（选填）") },
+                        placeholder = { Text("例如：降压药") },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 20.sp),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        singleLine = true
+                    )
                 }
 
-                Spacer(Modifier.height(18.dp))
-                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("提醒分类", fontSize = 15.sp, color = TextSecondary)
-                        Spacer(Modifier.height(8.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                Reminder.Category.MEDICATION,
-                                Reminder.Category.HEALTH,
-                                Reminder.Category.EXERCISE,
-                                Reminder.Category.WATER,
-                                Reminder.Category.OTHER
-                            ).forEach { c ->
-                                val selected = category == c
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (selected) BluePrimary else Color(0xFFF0F3F8),
-                                    modifier = Modifier.weight(1f).clickable { category = c }
-                                ) {
-                                    Column(
-                                        Modifier.padding(vertical = 8.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(Reminder.Category.emoji(c), fontSize = 20.sp)
-                                        Text(
-                                            Reminder.Category.label(c),
-                                            fontSize = 12.sp,
-                                            color = if (selected) Color.White else TextPrimary,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                Spacer(Modifier.height(14.dp))
 
-                Spacer(Modifier.height(12.dp))
-                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("提醒方式", fontSize = 15.sp, color = TextSecondary)
-                        Spacer(Modifier.height(6.dp))
+                // 分类选择：点选弹窗（大类 → 次小类），结合常用页定义的分类
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    modifier = Modifier.fillMaxWidth().clickable { showCategoryPicker = true }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("分类", fontSize = 18.sp, color = TextSecondary, modifier = Modifier.width(90.dp))
                         Text(
-                            "音效在【设置 → 提醒音效】中统一选择（系统闹铃 / 男声 / 女声 / 自定义）",
-                            fontSize = 14.sp,
-                            color = TextSecondary
+                            Reminder.Category.emoji(category) + " " + Reminder.Category.label(category),
+                            fontSize = 19.sp,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f)
                         )
+                        Text("＞", fontSize = 20.sp, color = TextSecondary)
                     }
                 }
 
@@ -258,7 +239,116 @@ fun EditorScreen(
             dismissButton = { TextButton(onClick = { showDelete = false }) { Text("取消") } }
         )
     }
+
+    // 分类选择弹窗：先选大类，再选次小类（pickingCategory 存大类 label）
+    if (showCategoryPicker) {
+        val customItems by com.elder.reminder.data.CommonCategoryPrefs.items.collectAsState()
+        val categoryGroups = listOf(
+            CategoryChoice("服药", Reminder.Category.MEDICATION, "💊"),
+            CategoryChoice("测血压血糖", Reminder.Category.HEALTH, "🩺"),
+            CategoryChoice("其他", Reminder.Category.OTHER, "📌")
+        ) + customItems.map { CategoryChoice(it.label, Reminder.Category.OTHER, "📌") }
+
+        // 当前已选大类 label（用于高亮 & 反查次小类）
+        val currentCategoryLabel = when {
+            category == Reminder.Category.MEDICATION -> "服药"
+            category == Reminder.Category.HEALTH -> "测血压血糖"
+            category == Reminder.Category.OTHER -> {
+                // 若是自定义大类，用 drug/title 反查不太可靠，直接用第一个自定义；此处以 pickedLabel 为准
+                pickingCategory
+            }
+            else -> Reminder.Category.label(category)
+        }
+
+        if (pickingCategory == null) {
+            // 第一步：选大类
+            AlertDialog(
+                onDismissRequest = {
+                    showCategoryPicker = false
+                    pickingCategory = null
+                },
+                title = { Text("选择分类") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        categoryGroups.forEach { c ->
+                            val selected = currentCategoryLabel == c.label
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selected) Color(0xFFEAF1FF) else Color(0xFFF7F8FA),
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    category = c.category
+                                    pickingCategory = c.label
+                                }
+                            ) {
+                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(c.emoji, fontSize = 20.sp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(c.label, fontSize = 17.sp, color = TextPrimary)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showCategoryPicker = false; pickingCategory = null }) { Text("取消") } }
+            )
+        } else {
+            // 第二步：按大类 label 选次小类
+            val subChoices = when (pickingCategory) {
+                "服药" -> listOf("降压药", "降糖药", "睡前药", "其他")
+                "测血压血糖" -> listOf("量血压", "测血糖")
+                else -> {
+                    val c = customItems.firstOrNull { it.label == pickingCategory }
+                    c?.subItems?.ifEmpty { listOf("其他") } ?: listOf("其他")
+                }
+            }
+            AlertDialog(
+                onDismissRequest = {
+                    pickingCategory = null
+                    showCategoryPicker = false
+                },
+                title = { Text("选择「$pickingCategory」的次小类") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        subChoices.forEach { sub ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF7F8FA),
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    // 选中次小类：服药→药名字段；其他→标题
+                                    if (category == Reminder.Category.MEDICATION) {
+                                        drug = sub
+                                        if (title.isBlank()) title = "服药"
+                                    } else {
+                                        title = sub
+                                    }
+                                    pickingCategory = null
+                                    showCategoryPicker = false
+                                }
+                            ) {
+                                Text(sub, fontSize = 17.sp, color = TextPrimary, modifier = Modifier.padding(14.dp))
+                            }
+                        }
+                        // 允许自行输入内容
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFFEAF1FF),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                pickingCategory = null
+                                showCategoryPicker = false
+                            }
+                        ) {
+                            Text("自行输入内容", fontSize = 16.sp, color = BluePrimary, modifier = Modifier.padding(14.dp))
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { pickingCategory = null; showCategoryPicker = false }) { Text("取消") } }
+            )
+        }
+    }
 }
+
+/** 分类弹窗用的大类项。 */
+private data class CategoryChoice(val label: String, val category: String, val emoji: String)
 
 private fun repeatTextOf(r: Reminder.Repeat): String {
     val tmp = Reminder(id = 0, title = "", triggerAt = 0, repeat = r)

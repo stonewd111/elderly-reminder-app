@@ -66,7 +66,6 @@ import com.elder.reminder.ui.screens.HomeScreen
 import com.elder.reminder.ui.screens.ReminderListScreen
 import com.elder.reminder.ui.screens.VoiceScreen
 import com.elder.reminder.ui.theme.BluePrimary
-import java.util.Calendar
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_LIST = "list"
@@ -125,7 +124,9 @@ fun ElderApp() {
     }
 
     val scaleUp: (Reminder, Boolean) -> Unit = { r, on ->
-        val updated = r.copy(enabled = on, done = false)
+        // 关闭 → done=true（进"已完成"页）；开启 → done=false（回到对应时间页）。
+        // 用户诉求（问题3）：关闭后应在"已完成"里能看到；重新开启今日已关闭的提醒应回"今天"，而非"未来"。
+        val updated = r.copy(enabled = on, done = !on)
         ReminderRepository.upsert(updated)
         if (on) ReminderScheduler.schedule(context, updated)
         else ReminderScheduler.cancel(context, r.id)
@@ -188,31 +189,29 @@ fun ElderApp() {
             }
             composable(ROUTE_COMMON) {
                 CommonScreen(
-                    onAdd = { title, hour, minute, repeat, mode, category ->
-                        // 点模板 → 预填编辑页，用户确认后才真正创建提醒
-                        val c = Calendar.getInstance().apply {
-                            set(Calendar.HOUR_OF_DAY, hour)
-                            set(Calendar.MINUTE, minute)
-                            set(Calendar.SECOND, 0)
-                            set(Calendar.MILLISECOND, 0)
-                        }
-                        if (c.timeInMillis <= System.currentTimeMillis()) {
-                            c.add(Calendar.DAY_OF_YEAR, 1)
-                        }
+                    // 点小类 → 预填编辑页（标题 + 分类 + 药名），时间由用户在编辑页填写。
+                    // 服药类：标题固定"服药"，药名=小类；其他类：标题=小类。
+                    onAdd = { sub, category ->
+                        val isMed = category == Reminder.Category.MEDICATION
                         prefillTemplate = Reminder(
                             id = -1L,
-                            title = title,
-                            triggerAt = c.timeInMillis,
-                            mode = mode,
-                            repeat = repeat,
+                            title = if (isMed) "服药" else sub,
+                            triggerAt = System.currentTimeMillis() + 60 * 60 * 1000L, // 默认 1 小时后，用户可改
+                            mode = Reminder.Mode.VOICE,
+                            repeat = Reminder.Repeat.None,
                             enabled = true,
                             done = false,
-                            category = category
+                            category = category,
+                            drug = if (isMed) sub else ""
                         )
                         navController.navigate("editor?id=-1&text=")
                     },
                     onEdit = { reminder ->
                         navController.navigate("editor?id=${reminder.id}")
+                    },
+                    onDeleteCustomCategory = { label ->
+                        com.elder.reminder.data.CommonCategoryPrefs.removeCategory(label)
+                        Toast.makeText(context, "已删除自定义分类：$label", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
@@ -243,7 +242,13 @@ fun ElderApp() {
                     existing = if (id > 0) ReminderRepository.find(id) else null,
                     onBack = { navController.popBackStack() },
                     onRetry = { navController.popBackStack() },
-                    onSaved = { navController.popBackStack() }
+                    // 修复语音录入跳步 BUG：确认后进入编辑页设置周期，而非直接保存。
+                    onSaved = {
+                        // 携带语音文本跳转到编辑页，由用户确认周期后保存
+                        navController.navigate("editor?id=$id&text=${Uri.encode(text)}") {
+                            popUpTo("voice?id={id}") { inclusive = true }
+                        }
+                    }
                 )
             }
             composable(
@@ -375,6 +380,9 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                 SoundSettingSection(context)
 
                 Spacer(Modifier.height(14.dp))
+                AlarmThemeSection()
+
+                Spacer(Modifier.height(14.dp))
                 FontSettingSection()
 
                 Spacer(Modifier.height(10.dp))
@@ -484,6 +492,47 @@ private fun SoundOption(text: String, selected: Boolean, onClick: () -> Unit) {
                 color = if (selected) BluePrimary else Color(0xFF98A2B3)
             )
             Spacer(Modifier.width(10.dp))
+            Text(text, fontSize = 16.sp, color = Color(0xFF101828))
+        }
+    }
+}
+
+/** 大屏提醒背景颜色设置区（红色 / 蓝色，仅背景色不同）。 */
+@Composable
+private fun AlarmThemeSection() {
+    val theme by com.elder.reminder.data.AlarmThemePrefs.theme.collectAsState()
+    Text("🎨 大屏提醒颜色", fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color(0xFF101828))
+    Spacer(Modifier.height(4.dp))
+    Text("到点全屏提醒的背景颜色（红色醒目 / 蓝色柔和）", fontSize = 13.sp, color = Color(0xFF667085))
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ThemeOption(
+            "🔴 红色",
+            theme == com.elder.reminder.data.AlarmThemePrefs.THEME_RED,
+            Color(0xFFE5362F),
+            Modifier.weight(1f)
+        ) { com.elder.reminder.data.AlarmThemePrefs.setTheme(com.elder.reminder.data.AlarmThemePrefs.THEME_RED) }
+        ThemeOption(
+            "🔵 蓝色",
+            theme == com.elder.reminder.data.AlarmThemePrefs.THEME_BLUE,
+            Color(0xFF1E6FEB),
+            Modifier.weight(1f)
+        ) { com.elder.reminder.data.AlarmThemePrefs.setTheme(com.elder.reminder.data.AlarmThemePrefs.THEME_BLUE) }
+    }
+}
+
+@Composable
+private fun ThemeOption(text: String, selected: Boolean, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = if (selected) Color(0xFFEAF1FF) else Color(0xFFF7F8FA),
+        border = if (selected) androidx.compose.foundation.BorderStroke(2.dp, color) else null,
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
             Text(text, fontSize = 16.sp, color = Color(0xFF101828))
         }
     }

@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,17 +35,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.elder.reminder.data.AlarmThemePrefs
 import com.elder.reminder.domain.TimeFormats
+import com.elder.reminder.ui.theme.AlarmBlue
+import com.elder.reminder.ui.theme.AlarmBlueDark
 import com.elder.reminder.ui.theme.AlarmRed
 import com.elder.reminder.ui.theme.AlarmRedDark
 import com.elder.reminder.ui.theme.TextPrimary
 
 /**
- * 到点提醒全屏页（界面2 第8屏重设计）：
- *  - 铃铛 + “到点了，请注意”上移（顶部区域）
- *  - 中间提醒框放大：左上角粗体时间 + 中间粗体提醒内容
- *  - 去掉“语音提醒 / 不重复”等次要文字
- *  - 背景与“停止提醒”按钮重新配色
+ * 到点提醒全屏页（用户要求 v1.3.0）：
+ *  - 标题两行显示："到点了，" / "请注意！"（最大字体）
+ *  - 中间提醒内容框与下方"停止提醒"按钮结合内容排列，内容少时停止按钮上移紧贴内容框
+ *  - 背景主题可配：红色（默认）/ 蓝色，仅背景色不同
  */
 @Composable
 fun AlarmScreen(
@@ -54,8 +55,14 @@ fun AlarmScreen(
     modeText: String,
     repeatText: String,
     timeMillis: Long,
+    alarmTheme: String = AlarmThemePrefs.THEME_RED,
     onStop: () -> Unit
 ) {
+    val isBlue = alarmTheme == AlarmThemePrefs.THEME_BLUE
+    val bgTop = if (isBlue) AlarmBlue else AlarmRed
+    val bgBottom = if (isBlue) AlarmBlueDark else AlarmRedDark
+    val accent = if (isBlue) AlarmBlueDark else AlarmRedDark
+
     val transition = rememberInfiniteTransition(label = "alarm")
     val pulse by transition.animateFloat(
         initialValue = 1f,
@@ -67,20 +74,20 @@ fun AlarmScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(AlarmRed, AlarmRedDark)))
+            .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
     ) {
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp, vertical = 28.dp)
         ) {
-            // 顶部：铃铛 + 标题（上移）
+            // 顶部：铃铛 + 两行标题
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Box(
-                    Modifier.size(120.dp).scale(pulse).clip(CircleShape)
+                    Modifier.size(112.dp).scale(pulse).clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.16f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -88,39 +95,46 @@ fun AlarmScreen(
                         Icons.Filled.NotificationsActive,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(64.dp)
+                        modifier = Modifier.size(60.dp)
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
                 Text(
-                    "到点了，请注意！",
-                    fontSize = 40.sp,
-                    lineHeight = 50.sp,
+                    "到点了，",
+                    fontSize = 44.sp,
+                    lineHeight = 54.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    "请注意！",
+                    fontSize = 44.sp,
+                    lineHeight = 54.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center
                 )
             }
 
-            Spacer(Modifier.height(28.dp))
-
-            // 中间：放大提醒框（白色实底 + 深色字，左上角时间 + 中间内容）
+            // 中部：提醒内容框 + 停止提醒按钮，紧贴排列（内容少时整体上移，不留大空隙）
+            Spacer(Modifier.height(24.dp))
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Color.White,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp)) {
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 26.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             TimeFormats.time(timeMillis),
                             fontSize = 34.sp,
                             fontWeight = FontWeight.Bold,
-                            color = AlarmRedDark
+                            color = accent
                         )
                     }
-                    Spacer(Modifier.height(22.dp))
+                    Spacer(Modifier.height(18.dp))
                     Text(
                         title,
                         fontSize = 30.sp,
@@ -133,9 +147,8 @@ fun AlarmScreen(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
-
-            // 底部：停止提醒按钮（红色半透明底 + 白色描边 + 白字）
+            // 停止提醒按钮：紧贴内容框下方（内容少时也上移，避免与内容间隔过大）
+            Spacer(Modifier.height(20.dp))
             Surface(
                 shape = RoundedCornerShape(34.dp),
                 color = Color.White.copy(alpha = 0.12f),
@@ -158,7 +171,6 @@ fun AlarmScreen(
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(8.dp))
         }
     }
 }

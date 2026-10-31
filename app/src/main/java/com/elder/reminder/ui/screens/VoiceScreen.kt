@@ -194,20 +194,8 @@ fun ConfirmScreen(
             }
 
             Spacer(Modifier.height(20.dp))
-            PrimaryButton("确认保存", onClick = {
-                val id = existing?.id ?: ReminderRepository.nextId()
-                val reminder = Reminder(
-                    id = id,
-                    title = parsed.title,
-                    triggerAt = parsed.triggerAt,
-                    mode = existing?.mode ?: Reminder.Mode.VOICE,
-                    repeat = existing?.repeat ?: Reminder.Repeat.None,
-                    enabled = true,
-                    done = false
-                )
-                ReminderRepository.upsert(reminder)
-                ReminderScheduler.schedule(context, reminder)
-                android.widget.Toast.makeText(context, "提醒已保存", android.widget.Toast.LENGTH_SHORT).show()
+            PrimaryButton("下一步：设置周期", onClick = {
+                // 修复语音录入跳步 BUG：不再直接保存，交由编辑页设置周期后保存
                 onSaved()
             })
             Spacer(Modifier.height(12.dp))
