@@ -11,11 +11,14 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -27,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,7 +54,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.elder.reminder.alarm.ReminderScheduler
 import com.elder.reminder.asr.VoiceSession
+import com.elder.reminder.data.FontPrefs
 import com.elder.reminder.data.ReminderRepository
+import com.elder.reminder.data.SoundPrefs
 import com.elder.reminder.model.Reminder
 import com.elder.reminder.domain.LunarDate
 import com.elder.reminder.ui.screens.CommonScreen
@@ -74,6 +80,8 @@ fun ElderApp() {
     val voice by VoiceSession.state.collectAsState()
     var showSettings by remember { mutableStateOf(false) }
     var pendingVoiceId by remember { mutableStateOf<Long?>(null) }
+    // 常用模板点击后预填编辑页（用户要求：点类型→编辑页确认后才创建提醒）
+    var prefillTemplate by remember { mutableStateOf<Reminder?>(null) }
 
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -125,10 +133,15 @@ fun ElderApp() {
         bottomBar = {
             if (currentRoute == ROUTE_HOME || currentRoute == ROUTE_LIST || currentRoute == ROUTE_COMMON) {
                 ElderBottomBar(currentRoute) { route ->
-                    navController.navigate(route) {
-                        popUpTo(ROUTE_HOME) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    if (route == currentRoute) return@ElderBottomBar
+                    // 底部栏切换：弹回已存在的目的地；不存在则新开，避免回退栈堆积导致
+                    // “进全部提醒后无法进常用页面”的状态错乱。
+                    val popped = navController.popBackStack(route, false)
+                    if (!popped) {
+                        navController.navigate(route) {
+                            popUpTo(ROUTE_HOME)
+                            launchSingleTop = true
+                        }
                     }
                 }
             }
@@ -158,30 +171,34 @@ fun ElderApp() {
                 )
             }
             composable(ROUTE_COMMON) {
-                CommonScreen { title, hour, minute, repeat, mode ->
-                    val c = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, hour)
-                        set(Calendar.MINUTE, minute)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
+                CommonScreen(
+                    onAdd = { title, hour, minute, repeat, mode, category ->
+                        // 点模板 → 预填编辑页，用户确认后才真正创建提醒
+                        val c = Calendar.getInstance().apply {
+                            set(Calendar.HOUR_OF_DAY, hour)
+                            set(Calendar.MINUTE, minute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        if (c.timeInMillis <= System.currentTimeMillis()) {
+                            c.add(Calendar.DAY_OF_YEAR, 1)
+                        }
+                        prefillTemplate = Reminder(
+                            id = -1L,
+                            title = title,
+                            triggerAt = c.timeInMillis,
+                            mode = mode,
+                            repeat = repeat,
+                            enabled = true,
+                            done = false,
+                            category = category
+                        )
+                        navController.navigate("editor?id=-1&text=")
+                    },
+                    onEdit = { reminder ->
+                        navController.navigate("editor?id=${reminder.id}")
                     }
-                    if (c.timeInMillis <= System.currentTimeMillis()) {
-                        c.add(Calendar.DAY_OF_YEAR, 1)
-                    }
-                    val reminder = Reminder(
-                        id = ReminderRepository.nextId(),
-                        title = title,
-                        triggerAt = c.timeInMillis,
-                        mode = mode,
-                        repeat = repeat,
-                        enabled = true,
-                        done = false
-                    )
-                    ReminderRepository.upsert(reminder)
-                    ReminderScheduler.schedule(context, reminder)
-                    Toast.makeText(context, "已添加：$title", Toast.LENGTH_SHORT).show()
-                    navController.navigate(ROUTE_LIST)
-                }
+                )
             }
             composable(
                 "voice?id={id}",
@@ -210,7 +227,7 @@ fun ElderApp() {
                     existing = if (id > 0) ReminderRepository.find(id) else null,
                     onBack = { navController.popBackStack() },
                     onRetry = { navController.popBackStack() },
-                    onSaved = { navController.popBackStack(ROUTE_HOME, false) }
+                    onSaved = { navController.popBackStack() }
                 )
             }
             composable(
@@ -223,12 +240,16 @@ fun ElderApp() {
                 val id = entry.arguments?.getLong("id") ?: -1L
                 val text = entry.arguments?.getString("text")?.takeIf { it.isNotBlank() }
                 EditorScreen(
-                    initial = if (id > 0) ReminderRepository.find(id) else null,
+                    initial = when {
+                        prefillTemplate != null -> prefillTemplate
+                        id > 0 -> ReminderRepository.find(id)
+                        else -> null
+                    },
                     spokenText = text,
-                    onBack = { navController.popBackStack() },
+                    onBack = { prefillTemplate = null; navController.popBackStack() },
                     onVoiceEdit = { vid -> startVoice(vid) },
-                    onSaved = { navController.popBackStack(ROUTE_HOME, false) },
-                    onDeleted = { navController.popBackStack(ROUTE_HOME, false) }
+                    onSaved = { prefillTemplate = null; navController.popBackStack() },
+                    onDeleted = { prefillTemplate = null; navController.popBackStack() }
                 )
             }
         }
@@ -321,9 +342,13 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                 SettingRow("📂 后台运行（OPPO 需允许自启动+后台无限制）") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
                 }
-                SettingRow("🗣️ 语音引擎（语音提醒无声时，检查是否安装了中文语音）") {
-                    open(Intent("android.speech.tts.engine.INSTALL_TTS_DATA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
+
+                Spacer(Modifier.height(6.dp))
+                SoundSettingSection(context)
+
+                Spacer(Modifier.height(14.dp))
+                FontSettingSection()
+
                 Spacer(Modifier.height(10.dp))
                 Text(
                     "小提示：设置好后，点下面按钮建一条 2 分钟后的测试提醒，锁屏等待看看是否会全屏弹出并响铃。",
@@ -349,6 +374,139 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } }
     )
+}
+
+/**
+ * 提醒音效设置区：系统闹铃 / 男声 / 女声 / 自定义MP3。
+ * 音效全局统一（用户要求），自定义 MP3 通过系统文件选择器选取，持久化读权限。
+ */
+@Composable
+private fun SoundSettingSection(context: Context) {
+    val soundType by SoundPrefs.soundType.collectAsState()
+    val customName by SoundPrefs.customName.collectAsState()
+
+    val mp3Launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            // 持久化读权限，服务播报时也能读取
+            context.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        val name = queryDisplayName(context, uri) ?: "自定义铃声"
+        SoundPrefs.setCustom(uri.toString(), name)
+        SoundPrefs.setSoundType(SoundPrefs.TYPE_CUSTOM)
+        Toast.makeText(context, "已设置提醒音效：$name", Toast.LENGTH_SHORT).show()
+    }
+
+    Text("🔊 提醒音效", fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color(0xFF101828))
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "到点提醒时统一使用这里的音效（系统闹铃 / 男声 / 女声 / 自定义）",
+        fontSize = 13.sp, color = Color(0xFF667085)
+    )
+    Spacer(Modifier.height(8.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SoundOption("🔔 系统闹铃", soundType == SoundPrefs.TYPE_SYSTEM) {
+            SoundPrefs.setSoundType(SoundPrefs.TYPE_SYSTEM)
+        }
+        SoundOption("👨 男声（到点了，请注意！）", soundType == SoundPrefs.TYPE_MALE) {
+            SoundPrefs.setSoundType(SoundPrefs.TYPE_MALE)
+        }
+        SoundOption("👩 女声（到点了，请注意！）", soundType == SoundPrefs.TYPE_FEMALE) {
+            SoundPrefs.setSoundType(SoundPrefs.TYPE_FEMALE)
+        }
+        SoundOption(
+            "🎵 自定义${if (customName.isNotBlank()) "（$customName）" else "（未选择）"}",
+            soundType == SoundPrefs.TYPE_CUSTOM
+        ) {
+            if (soundType != SoundPrefs.TYPE_CUSTOM || SoundPrefs.customPath.value.isBlank()) {
+                mp3Launcher.launch("audio/mpeg")
+            } else {
+                SoundPrefs.setSoundType(SoundPrefs.TYPE_CUSTOM)
+            }
+        }
+    }
+    if (soundType == SoundPrefs.TYPE_CUSTOM) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "自定义 MP3 需在 10MB 以内，建议时长 3~10 秒并提前录好“到点了，请注意！”。选择后自动生效，重新选择可更换。",
+            fontSize = 12.sp, color = Color(0xFF667085)
+        )
+    }
+}
+
+@Composable
+private fun SoundOption(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = if (selected) Color(0xFFEAF1FF) else Color(0xFFF7F8FA),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                if (selected) "◉" else "○",
+                fontSize = 18.sp,
+                color = if (selected) BluePrimary else Color(0xFF98A2B3)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(text, fontSize = 16.sp, color = Color(0xFF101828))
+        }
+    }
+}
+
+/** 从 content Uri 查询显示名（文件名）。 */
+private fun queryDisplayName(context: Context, uri: Uri): String? {
+    return runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) c.getString(idx) else null
+            } else null
+        }
+    }.getOrNull()
+}
+
+/** 字体大小设置区（老人视角适配）。 */
+@Composable
+private fun FontSettingSection() {
+    val level by FontPrefs.level.collectAsState()
+    Text("🔤 字体大小", fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color(0xFF101828))
+    Spacer(Modifier.height(4.dp))
+    Text("为方便老人看清，可放大全局文字（含提醒大屏）", fontSize = 13.sp, color = Color(0xFF667085))
+    Spacer(Modifier.height(8.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FontOption("标准", level == FontPrefs.LEVEL_STANDARD) { FontPrefs.setLevel(FontPrefs.LEVEL_STANDARD) }
+        FontOption("大（+15%）", level == FontPrefs.LEVEL_LARGE) { FontPrefs.setLevel(FontPrefs.LEVEL_LARGE) }
+        FontOption("特大（+30%）", level == FontPrefs.LEVEL_XLARGE) { FontPrefs.setLevel(FontPrefs.LEVEL_XLARGE) }
+    }
+}
+
+@Composable
+private fun FontOption(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        color = if (selected) Color(0xFFEAF1FF) else Color(0xFFF7F8FA),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                if (selected) "◉" else "○",
+                fontSize = 18.sp,
+                color = if (selected) BluePrimary else Color(0xFF98A2B3)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(text, fontSize = 16.sp, color = Color(0xFF101828))
+        }
+    }
 }
 
 @Composable

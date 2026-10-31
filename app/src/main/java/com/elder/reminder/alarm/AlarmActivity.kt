@@ -9,6 +9,8 @@ import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.elder.reminder.ui.alarm.AlarmScreen
 
 /**
@@ -42,13 +44,16 @@ class AlarmActivity : ComponentActivity() {
         setContentView(
             androidx.compose.ui.platform.ComposeView(this).apply {
                 setContent {
-                    AlarmScreen(
-                        title = screenTitle,
-                        modeText = if (screenMode == "VOICE") "语音提醒" else "滴滴滴提醒",
-                        repeatText = screenRepeat,
-                        timeMillis = screenTime,
-                        onStop = { finishAlarm() }
-                    )
+                    val level by com.elder.reminder.data.FontPrefs.level.collectAsState()
+                    com.elder.reminder.ui.theme.ElderTheme(scale = com.elder.reminder.data.FontPrefs.scaleOf(level)) {
+                        AlarmScreen(
+                            title = screenTitle,
+                            modeText = if (screenMode == "VOICE") "语音提醒" else "滴滴滴提醒",
+                            repeatText = screenRepeat,
+                            timeMillis = screenTime,
+                            onStop = { finishAlarm() }
+                        )
+                    }
                 }
             }
         )

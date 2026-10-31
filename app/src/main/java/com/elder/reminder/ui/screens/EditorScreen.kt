@@ -70,6 +70,7 @@ fun EditorScreen(
     var title by remember { mutableStateOf(initial?.title ?: parsed?.title ?: "") }
     var triggerAt by remember { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
     var mode by remember { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
+    var category by remember { mutableStateOf(initial?.category ?: Reminder.Category.OTHER) }
     var repeat by remember { mutableStateOf<Reminder.Repeat>(initial?.repeat ?: Reminder.Repeat.None) }
     var step by remember { mutableIntStateOf(1) }
     var showDelete by remember { mutableStateOf(false) }
@@ -88,7 +89,8 @@ fun EditorScreen(
             repeat = repeat,
             enabled = true,
             done = false,
-            createdAt = initial?.createdAt ?: System.currentTimeMillis()
+            createdAt = initial?.createdAt ?: System.currentTimeMillis(),
+            category = category
         )
         ReminderRepository.upsert(reminder)
         ReminderScheduler.schedule(context, reminder)
@@ -140,12 +142,51 @@ fun EditorScreen(
 
                 Spacer(Modifier.height(18.dp))
                 Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        Text("提醒方式", fontSize = 15.sp, color = TextSecondary, modifier = Modifier.padding(start = 16.dp, top = 12.dp))
-                        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ModePill("🔊 语音提醒", mode == Reminder.Mode.VOICE, Modifier.weight(1f)) { mode = Reminder.Mode.VOICE }
-                            ModePill("🔔 滴滴滴提醒", mode == Reminder.Mode.BEEP, Modifier.weight(1f)) { mode = Reminder.Mode.BEEP }
+                    Column(Modifier.padding(14.dp)) {
+                        Text("提醒分类", fontSize = 15.sp, color = TextSecondary)
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                Reminder.Category.MEDICATION,
+                                Reminder.Category.HEALTH,
+                                Reminder.Category.EXERCISE,
+                                Reminder.Category.WATER,
+                                Reminder.Category.OTHER
+                            ).forEach { c ->
+                                val selected = category == c
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (selected) BluePrimary else Color(0xFFF0F3F8),
+                                    modifier = Modifier.weight(1f).clickable { category = c }
+                                ) {
+                                    Column(
+                                        Modifier.padding(vertical = 8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(Reminder.Category.emoji(c), fontSize = 20.sp)
+                                        Text(
+                                            Reminder.Category.label(c),
+                                            fontSize = 12.sp,
+                                            color = if (selected) Color.White else TextPrimary,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
                         }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("提醒方式", fontSize = 15.sp, color = TextSecondary)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "音效在【设置 → 提醒音效】中统一选择（系统闹铃 / 男声 / 女声 / 自定义）",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
                     }
                 }
 
@@ -157,7 +198,8 @@ fun EditorScreen(
                 Spacer(Modifier.height(22.dp))
                 PrimaryButton("下一步：设置周期", onClick = { step = 2 })
                 Spacer(Modifier.height(10.dp))
-                if (initial != null) {
+                val isExisting = initial?.id?.let { it > 0 } == true
+                if (isExisting) {
                     SecondaryButton("🎙 语音修改这条提醒", onClick = { onVoiceEdit(initial.id) })
                     Spacer(Modifier.height(10.dp))
                     SecondaryButton("删除这条提醒", onClick = { showDelete = true })

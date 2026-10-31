@@ -18,11 +18,13 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.net.Uri
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.elder.reminder.R
+import com.elder.reminder.data.SoundPrefs
 import java.util.Locale
 
 /**
@@ -103,20 +105,30 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         // 应用在前台时立即弹红色全屏页；后台被拦截时由 fullScreenIntent 兜底
         tryStartAlarmActivity()
 
-        if (mode == "VOICE") {
-            // 优先播放内置人声提示音（不依赖系统 TTS，OPPO 等设备也能发声）
-            if (!startVoiceLoop()) {
-                tts = TextToSpeech(this, this)
-            }
-        } else {
-            startBeep()
-        }
+        // 按全局音效设置播报（用户要求：音效放设置里，不在单次提醒里选）
+        playByPrefs()
+
         handler.postDelayed(stopRunnable, DURATION_MS)
         return START_NOT_STICKY
     }
 
-    /** 循环播放内置"到点了，请注意！"人声。成功返回 true；失败（文件异常）返回 false，降级 TTS。 */
-    private fun startVoiceLoop(): Boolean {
+    /** 按 SoundPrefs 全局音效设置播报：system 闹铃 / male 男声 / female 女声 / custom 自定义MP3。失败逐级降级。 */
+    private fun playByPrefs() {
+        val type = SoundPrefs.effectiveType()
+        val ok = when (type) {
+            SoundPrefs.TYPE_CUSTOM -> startCustomLoop()
+            SoundPrefs.TYPE_MALE -> startResourceLoop(R.raw.alarm_voice_male)
+            SoundPrefs.TYPE_FEMALE -> startResourceLoop(R.raw.alarm_voice)
+            else -> startPlayerLoop() // 系统闹钟铃声
+        }
+        if (ok) return
+        // 降级链：自定义→系统闹铃→TTS→滴滴
+        if (type == SoundPrefs.TYPE_CUSTOM && startPlayerLoop()) return
+        tts = TextToSpeech(this, this)
+    }
+
+    /** 循环播放内置人声资源（"到点了，请注意！"）。成功返回 true；失败返回 false。 */
+    private fun startResourceLoop(resId: Int): Boolean {
         return runCatching {
             player = MediaPlayer().apply {
                 setAudioAttributes(
@@ -125,9 +137,30 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
-                val afd = resources.openRawResourceFd(R.raw.alarm_voice)
+                val afd = resources.openRawResourceFd(resId)
                 setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
                 afd.close()
+                isLooping = true
+                prepare()
+                start()
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    /** 循环播放自定义 MP3（content URI，已持久化读权限）。成功返回 true；失败返回 false。 */
+    private fun startCustomLoop(): Boolean {
+        val path = SoundPrefs.customPath.value
+        if (path.isBlank()) return false
+        return runCatching {
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                setDataSource(this@ForegroundAlarmService, Uri.parse(path))
                 isLooping = true
                 prepare()
                 start()

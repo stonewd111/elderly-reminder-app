@@ -6,9 +6,12 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -23,6 +26,17 @@ val PurpleTag = Color(0xFF7A5AF8)
 val AlarmRed = Color(0xFFE5362F)
 val AlarmRedDark = Color(0xFFC4120C)
 val CardWhite = Color(0xFFFFFFFF)
+
+/**
+ * 全局字体缩放（老人视角适配）。
+ * 标准 1.0 / 大 1.15 / 特大 1.3。默认标准。
+ */
+data class FontScaleState(val scale: Float = 1f)
+
+val LocalFontScale = staticCompositionLocalOf { FontScaleState(1f) }
+
+/** 按全局缩放系数放大字号（老人视角）。 */
+fun Float.scaled(scale: Float): Float = this * scale
 
 private val ElderColors = lightColorScheme(
     primary = BluePrimary,
@@ -56,11 +70,23 @@ private val ElderShapes = Shapes(
 )
 
 @Composable
-fun ElderTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = ElderColors,
-        typography = ElderTypography,
-        shapes = ElderShapes,
-        content = content
+fun ElderTheme(scale: Float = 1f, content: @Composable () -> Unit) {
+    val base = ElderTypography
+    val scaledType = Typography(
+        headlineMedium = base.headlineMedium.copy(fontSize = (base.headlineMedium.fontSize.value * scale).sp, lineHeight = if (base.headlineMedium.lineHeight != TextUnit.Unspecified) (base.headlineMedium.lineHeight.value * scale).sp else TextUnit.Unspecified),
+        titleLarge = base.titleLarge.copy(fontSize = (base.titleLarge.fontSize.value * scale).sp, lineHeight = if (base.titleLarge.lineHeight != TextUnit.Unspecified) (base.titleLarge.lineHeight.value * scale).sp else TextUnit.Unspecified),
+        titleMedium = base.titleMedium.copy(fontSize = (base.titleMedium.fontSize.value * scale).sp, lineHeight = if (base.titleMedium.lineHeight != TextUnit.Unspecified) (base.titleMedium.lineHeight.value * scale).sp else TextUnit.Unspecified),
+        bodyLarge = base.bodyLarge.copy(fontSize = (base.bodyLarge.fontSize.value * scale).sp, lineHeight = if (base.bodyLarge.lineHeight != TextUnit.Unspecified) (base.bodyLarge.lineHeight.value * scale).sp else TextUnit.Unspecified),
+        bodyMedium = base.bodyMedium.copy(fontSize = (base.bodyMedium.fontSize.value * scale).sp, lineHeight = if (base.bodyMedium.lineHeight != TextUnit.Unspecified) (base.bodyMedium.lineHeight.value * scale).sp else TextUnit.Unspecified),
+        labelLarge = base.labelLarge.copy(fontSize = (base.labelLarge.fontSize.value * scale).sp, lineHeight = if (base.labelLarge.lineHeight != TextUnit.Unspecified) (base.labelLarge.lineHeight.value * scale).sp else TextUnit.Unspecified),
+        labelMedium = base.labelMedium.copy(fontSize = (base.labelMedium.fontSize.value * scale).sp, lineHeight = if (base.labelMedium.lineHeight != TextUnit.Unspecified) (base.labelMedium.lineHeight.value * scale).sp else TextUnit.Unspecified)
     )
+    CompositionLocalProvider(LocalFontScale provides FontScaleState(scale)) {
+        MaterialTheme(
+            colorScheme = ElderColors,
+            typography = scaledType,
+            shapes = ElderShapes,
+            content = content
+        )
+    }
 }

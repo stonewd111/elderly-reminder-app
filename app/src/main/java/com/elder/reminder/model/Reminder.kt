@@ -14,9 +14,35 @@ data class Reminder(
     val repeat: Repeat = Repeat.None,
     val enabled: Boolean = true,
     val done: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** 提醒分类：medication 服药 / health 测血压血糖 / exercise 运动 / water 饮水 / other 其他 */
+    val category: String = "other"
 ) {
     enum class Mode { VOICE, BEEP }
+
+    object Category {
+        const val MEDICATION = "medication"
+        const val HEALTH = "health"
+        const val EXERCISE = "exercise"
+        const val WATER = "water"
+        const val OTHER = "other"
+
+        fun label(c: String): String = when (c) {
+            MEDICATION -> "服药"
+            HEALTH -> "测血压血糖"
+            EXERCISE -> "运动"
+            WATER -> "喝水"
+            else -> "自定义"
+        }
+
+        fun emoji(c: String): String = when (c) {
+            MEDICATION -> "💊"
+            HEALTH -> "🩺"
+            EXERCISE -> "🚶"
+            WATER -> "🥤"
+            else -> "📌"
+        }
+    }
 
     sealed interface Repeat {
         data object None : Repeat
@@ -37,6 +63,7 @@ data class Reminder(
         put("enabled", enabled)
         put("done", done)
         put("createdAt", createdAt)
+        put("category", category)
         put("repeat", repeatToJson(repeat))
     }
 
@@ -49,7 +76,8 @@ data class Reminder(
             repeat = repeatFromJson(o.optJSONObject("repeat")),
             enabled = o.optBoolean("enabled", true),
             done = o.optBoolean("done", false),
-            createdAt = o.optLong("createdAt", System.currentTimeMillis())
+            createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+            category = o.optString("category", "other")
         )
 
         private fun repeatToJson(r: Repeat): JSONObject = JSONObject().apply {

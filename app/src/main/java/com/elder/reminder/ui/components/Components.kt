@@ -126,8 +126,14 @@ fun ReminderCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     Tag(
-                        if (reminder.mode == Reminder.Mode.VOICE) "语音提醒" else "滴滴滴提醒",
-                        if (reminder.mode == Reminder.Mode.VOICE) BluePrimary else OrangeTag
+                        Reminder.Category.label(reminder.category),
+                        when (reminder.category) {
+                            Reminder.Category.MEDICATION -> BluePrimary
+                            Reminder.Category.HEALTH -> GreenTag
+                            Reminder.Category.EXERCISE -> OrangeTag
+                            Reminder.Category.WATER -> Color(0xFF0EA5E9)
+                            else -> PurpleTag
+                        }
                     )
                 }
                 Spacer(Modifier.height(4.dp))

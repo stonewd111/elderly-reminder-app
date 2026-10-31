@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,7 +40,11 @@ import com.elder.reminder.ui.theme.AlarmRed
 import com.elder.reminder.ui.theme.AlarmRedDark
 
 /**
- * 到点提醒全屏页（界面2 第8屏）：红色背景 + 铃铛 + 提醒内容 + 停止按钮。
+ * 到点提醒全屏页（界面2 第8屏重设计）：
+ *  - 铃铛 + “到点了，请注意”上移（顶部区域）
+ *  - 中间提醒框放大：左上角粗体时间 + 中间粗体提醒内容
+ *  - 去掉“语音提醒 / 不重复”等次要文字
+ *  - 背景与“停止提醒”按钮重新配色
  */
 @Composable
 fun AlarmScreen(
@@ -65,77 +70,92 @@ fun AlarmScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 36.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 24.dp, vertical = 28.dp)
         ) {
-            Box(
-                Modifier.size(132.dp).scale(pulse).clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
+            // 顶部：铃铛 + 标题（上移）
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
             ) {
-                Icon(
-                    Icons.Filled.NotificationsActive,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(72.dp)
+                Box(
+                    Modifier.size(120.dp).scale(pulse).clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.NotificationsActive,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(64.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "到点了，请注意！",
+                    fontSize = 40.sp,
+                    lineHeight = 50.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
                 )
             }
 
-            Spacer(Modifier.height(26.dp))
-            Text(
-                "到点了，\n请注意！",
-                fontSize = 44.sp,
-                lineHeight = 56.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
+            Spacer(Modifier.height(28.dp))
 
-            Spacer(Modifier.height(30.dp))
+            // 中间：放大提醒框（左上角时间 + 中间内容）
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = Color.White.copy(alpha = 0.14f),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            TimeFormats.time(timeMillis),
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(Modifier.height(22.dp))
                     Text(
                         title,
-                        fontSize = 26.sp,
+                        fontSize = 30.sp,
+                        lineHeight = 40.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "${TimeFormats.time(timeMillis)}  $modeText" + if (repeatText.isNotBlank()) "  $repeatText" else "",
-                        fontSize = 18.sp,
-                        color = Color.White.copy(alpha = 0.92f),
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.weight(1f))
+
+            // 底部：停止提醒按钮
             Surface(
                 shape = RoundedCornerShape(34.dp),
                 color = Color.White,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(68.dp),
+                    .height(72.dp),
                 onClick = onStop
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("停止提醒", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AlarmRedDark)
+                    Text("停止提醒", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = AlarmRedDark)
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
             Text(
                 "如不点击，约 2 分钟后自动停止",
                 fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                color = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
             )
+            Spacer(Modifier.height(8.dp))
         }
     }
 }

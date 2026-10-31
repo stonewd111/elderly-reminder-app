@@ -40,8 +40,6 @@ import com.elder.reminder.domain.LunarDate
 import com.elder.reminder.domain.TimeFormats
 import com.elder.reminder.domain.weekdayCn
 import com.elder.reminder.model.Reminder
-import com.elder.reminder.model.repeatText
-import com.elder.reminder.model.cnLabel
 import com.elder.reminder.ui.components.BigMicButton
 import com.elder.reminder.ui.components.ReminderCard
 import com.elder.reminder.ui.components.SectionTitle
@@ -282,51 +280,93 @@ fun ReminderListScreen(
     }
 }
 
-/** 常用事项模板 */
+/** 常用事项：按大类分组（用户要求）。点击大类→进入编辑页预填模板，确认后才创建提醒。 */
 @Composable
-fun CommonScreen(itemCreator: (String, Int, Int, Reminder.Repeat, Reminder.Mode) -> Unit) {
-    val templates = listOf(
-        Template("吃降压药", 8, 0, Reminder.Repeat.Daily, Reminder.Mode.VOICE, "💊"),
-        Template("吃降压药", 15, 0, Reminder.Repeat.Daily, Reminder.Mode.VOICE, "💊"),
-        Template("下楼散步", 18, 0, Reminder.Repeat.Daily, Reminder.Mode.VOICE, "🚶"),
-        Template("睡前吃药", 20, 30, Reminder.Repeat.Daily, Reminder.Mode.VOICE, "🌙"),
-        Template("喝水", 10, 0, Reminder.Repeat.Daily, Reminder.Mode.BEEP, "🥤"),
-        Template("量血压", 9, 0, Reminder.Repeat.Daily, Reminder.Mode.VOICE, "🩺")
+fun CommonScreen(
+    onAdd: (String, Int, Int, Reminder.Repeat, Reminder.Mode, String) -> Unit,
+    onEdit: (Reminder) -> Unit
+) {
+    // 分类顺序与模板（点击进入编辑页预填，用户可改时间/内容后保存）
+    val groups = listOf(
+        CategoryGroup("服药", Reminder.Category.MEDICATION, "💊", listOf(
+            CategoryTemplate("吃降压药", 8, 0, Reminder.Repeat.Daily),
+            CategoryTemplate("吃降压药", 15, 0, Reminder.Repeat.Daily),
+            CategoryTemplate("睡前吃药", 20, 30, Reminder.Repeat.Daily)
+        )),
+        CategoryGroup("测血压血糖", Reminder.Category.HEALTH, "🩺", listOf(
+            CategoryTemplate("量血压", 9, 0, Reminder.Repeat.Daily),
+            CategoryTemplate("测血糖", 7, 0, Reminder.Repeat.Daily)
+        )),
+        CategoryGroup("运动", Reminder.Category.EXERCISE, "🚶", listOf(
+            CategoryTemplate("下楼散步", 18, 0, Reminder.Repeat.Daily)
+        )),
+        CategoryGroup("喝水", Reminder.Category.WATER, "🥤", listOf(
+            CategoryTemplate("喝水", 10, 0, Reminder.Repeat.Daily)
+        )),
+        CategoryGroup("自定义", Reminder.Category.OTHER, "📌", listOf(
+            CategoryTemplate("自定义提醒", 9, 0, Reminder.Repeat.Daily)
+        ))
     )
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F7FA)).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(8.dp))
         Text("常用事项", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = BlueDeep)
         Spacer(Modifier.height(4.dp))
-        Text("点一下就能添加，按天重复提醒", fontSize = 15.sp, color = TextSecondary)
+        Text("点一个分类，进入编辑提醒后确认添加", fontSize = 15.sp, color = TextSecondary)
         Spacer(Modifier.height(14.dp))
         Column(
             Modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            templates.forEach { t ->
+            groups.forEach { g ->
+                // 大类卡片
                 Surface(
                     shape = RoundedCornerShape(18.dp),
                     color = Color.White,
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        itemCreator(t.title, t.hour, t.minute, t.repeat, t.mode)
-                    }
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(46.dp).clip(CircleShape).background(Color(0xFFEAF1FF)),
-                            contentAlignment = Alignment.Center
-                        ) { Text(t.emoji, fontSize = 22.sp) }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(t.title, fontSize = 19.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                    Column {
+                        Row(
+                            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(46.dp).clip(CircleShape).background(Color(0xFFEAF1FF)),
+                                contentAlignment = Alignment.Center
+                            ) { Text(g.emoji, fontSize = 22.sp) }
+                            Spacer(Modifier.width(12.dp))
                             Text(
-                                String.format(Locale.CHINA, "%02d:%02d", t.hour, t.minute) + "  " + t.repeat.cnLabel(),
-                                fontSize = 14.sp,
-                                color = TextSecondary
+                                g.label,
+                                fontSize = 21.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f)
                             )
+                            Text("${g.templates.size} 项", fontSize = 14.sp, color = TextSecondary)
                         }
-                        Text("添加", fontSize = 16.sp, color = BluePrimary)
+                        // 该分类下的模板项
+                        g.templates.forEach { t ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        // 点击模板 → 进入编辑页预填（由 onAdd 走 editor 流程）
+                                        onAdd(t.title, t.hour, t.minute, t.repeat, Reminder.Mode.VOICE, g.category)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("·", fontSize = 20.sp, color = TextSecondary)
+                                Spacer(Modifier.width(10.dp))
+                                Text(t.title, fontSize = 18.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+                                Text(
+                                    String.format(Locale.CHINA, "%02d:%02d", t.hour, t.minute),
+                                    fontSize = 16.sp,
+                                    color = BluePrimary
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }
@@ -335,11 +375,16 @@ fun CommonScreen(itemCreator: (String, Int, Int, Reminder.Repeat, Reminder.Mode)
     }
 }
 
-private data class Template(
+private data class CategoryGroup(
+    val label: String,
+    val category: String,
+    val emoji: String,
+    val templates: List<CategoryTemplate>
+)
+
+private data class CategoryTemplate(
     val title: String,
     val hour: Int,
     val minute: Int,
-    val repeat: Reminder.Repeat,
-    val mode: Reminder.Mode,
-    val emoji: String
+    val repeat: Reminder.Repeat
 )
