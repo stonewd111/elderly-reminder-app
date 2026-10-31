@@ -108,13 +108,19 @@ fun ElderApp() {
 
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { }
+    ) { granted ->
+        // 无论授予与否，在 OPPO/ColorOS 上尝试触发“锁屏显示”授权判定
+        if (granted) com.elder.reminder.alarm.LockscreenGuide.requestLockscreenCheck(context)
+    }
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
             != PackageManager.PERMISSION_GRANTED
         ) {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            // 通知权限已授予，直接尝试触发 OPPO“锁屏显示”授权判定
+            com.elder.reminder.alarm.LockscreenGuide.requestLockscreenCheck(context)
         }
     }
 
@@ -310,6 +316,8 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
     val notifGranted = remember {
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
     }
+    // OPPO/ColorOS 厂商专属“锁屏显示”权限（无法在安装时预授权，需系统运行时判定）
+    val isColorOS = remember { com.elder.reminder.alarm.LockscreenGuide.isColorOS(context) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -337,6 +345,17 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                         open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}")))
                     } else {
                         open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                    }
+                }
+                if (isColorOS) {
+                    Text(
+                        "⚠️ OPPO/ColorOS 需在“隐私→权限管理→权限→锁屏显示”允许本应用在锁屏上显示，" +
+                            "否则锁屏时无法弹出红色大屏。该权限无法安装时预授权，由系统首次触发时引导。",
+                        fontSize = 13.sp, color = Color(0xFFE5362F)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    SettingRow("🔒 锁屏显示（OPPO 专属）") {
+                        com.elder.reminder.alarm.LockscreenGuide.openLockscreenSetting(context)
                     }
                 }
                 SettingRow("🔋 忽略电池优化") {
