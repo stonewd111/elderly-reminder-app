@@ -3,66 +3,23 @@ package com.elder.reminder.alarm
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.AudioManager
-import android.media.MediaPlayer
-import android.media.RingtoneManager
-import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.speech.tts.TextToSpeech
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import com.elder.reminder.ui.alarm.AlarmScreen
-import java.util.Locale
 
 /**
- * 到点提醒：全屏红色界面 + 声音（语音/滴滴）+ 震动。
- * 支持锁屏显示（showWhenLocked + turnScreenOn）以及在其他应用前台时弹出全屏通知。
+ * 到点提醒全屏红色界面（纯视觉）。
+ * 声音统一由 ForegroundAlarmService 播报（锁屏/后台也能响），
+ * 本页不再自行播报声音，避免与前台服务双重声音/竞态。
+ * 支持锁屏显示（showWhenLocked + turnScreenOn）以及在其他应用前台时弹出。
  */
-class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
+class AlarmActivity : ComponentActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private var tts: TextToSpeech? = null
-    private var tone: ToneGenerator? = null
-    private var player: MediaPlayer? = null
-    private var mode = "VOICE"
-    private var title = "提醒事项"
-    private var startedAt = 0L
-    private var stopped = false
-    private var ttsReady = false
-
-    private val stopRunnable = Runnable { finishAlarm() }
-
-    private val repeatVoice = object : Runnable {
-        override fun run() {
-            if (stopped) return
-            if (System.currentTimeMillis() - startedAt >= DURATION_MS) {
-                finishAlarm(); return
-            }
-            if (ttsReady) {
-                tts?.speak("到点了，请注意！", TextToSpeech.QUEUE_FLUSH, null, "elder_alarm")
-                handler.postDelayed(this, 5000)
-            } else {
-                handler.postDelayed(this, 5000)
-            }
-        }
-    }
-
-    private val repeatBeep = object : Runnable {
-        override fun run() {
-            if (stopped) return
-            if (System.currentTimeMillis() - startedAt >= DURATION_MS) {
-                finishAlarm(); return
-            }
-            runCatching { tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 600) }
-            handler.postDelayed(this, 900)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,45 +34,17 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         @Suppress("DEPRECATION")
         window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
 
-        title = intent.getStringExtra(EXTRA_TITLE) ?: "提醒事项"
-        mode = intent.getStringExtra(EXTRA_MODE) ?: "VOICE"
-        val repeat = intent.getStringExtra(EXTRA_REPEAT) ?: ""
-        val time = intent.getLongExtra(EXTRA_TIME, System.currentTimeMillis())
-        val id = intent.getLongExtra(AlarmReceiver.EXTRA_ID, -1L)
-
-        startedAt = System.currentTimeMillis()
-        maxAlarmVolume()
-        startVibration()
-
-        if (Build.VERSION.SDK_INT >= 33) {
-            // 已展示全屏，可移除常驻通知
-            runCatching {
-                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id.hashCode())
-            }
-        }
-
-        setContentSafely()
-
-        if (mode == "VOICE") {
-            tts = TextToSpeech(this, this)
-        } else {
-            startBeep()
-        }
-        handler.postDelayed(stopRunnable, DURATION_MS)
-    }
-
-    private fun setContentSafely() {
-        val activity = this
-        val screenTitle = title
-        val screenMode = if (mode == "VOICE") "语音提醒" else "滴滴滴提醒"
+        val screenTitle = intent.getStringExtra(EXTRA_TITLE) ?: "提醒事项"
+        val screenMode = intent.getStringExtra(EXTRA_MODE) ?: "VOICE"
         val screenRepeat = intent.getStringExtra(EXTRA_REPEAT) ?: ""
         val screenTime = intent.getLongExtra(EXTRA_TIME, System.currentTimeMillis())
+
         setContentView(
-            androidx.compose.ui.platform.ComposeView(activity).apply {
+            androidx.compose.ui.platform.ComposeView(this).apply {
                 setContent {
                     AlarmScreen(
                         title = screenTitle,
-                        modeText = screenMode,
+                        modeText = if (screenMode == "VOICE") "语音提醒" else "滴滴滴提醒",
                         repeatText = screenRepeat,
                         timeMillis = screenTime,
                         onStop = { finishAlarm() }
@@ -123,106 +52,20 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 }
             }
         )
-    }
-
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val r = tts?.setLanguage(Locale.SIMPLIFIED_CHINESE)
-            if (r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED) {
-                ttsReady = true
-                tts?.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                tts?.setSpeechRate(0.9f)
-                handler.post(repeatVoice)
-            } else {
-                startBeep()
-            }
-        } else {
-            startBeep()
-        }
-    }
-
-    private fun startBeep() {
-        // 用系统闹钟铃声循环播放，声音响亮、不依赖 TTS/ToneGenerator 硬件。
-        if (startPlayerLoop()) return
-        runCatching {
-            tone = ToneGenerator(AudioManager.STREAM_ALARM, 100)
-            handler.post(repeatBeep)
-        }.onFailure { finishAlarm() }
-    }
-
-    /** 循环播放系统闹钟铃声，成功返回 true。 */
-    private fun startPlayerLoop(): Boolean {
-        return runCatching {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            player = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setDataSource(this@AlarmActivity, uri)
-                isLooping = true
-                prepare()
-                start()
-            }
-            true
-        }.getOrDefault(false)
-    }
-
-    private fun maxAlarmVolume() {
-        runCatching {
-            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            audio.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
-        }
-    }
-
-    private fun startVibration() {
-        runCatching {
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            val pattern = longArrayOf(0, 700, 500, 700, 500)
-            if (Build.VERSION.SDK_INT >= 26) {
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, 0))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(pattern, 0)
-            }
-        }
+        handler.postDelayed({ finishAlarm() }, ForegroundAlarmService.DURATION_MS)
     }
 
     private fun finishAlarm() {
-        if (stopped) return
-        stopped = true
-        handler.removeCallbacksAndMessages(null)
-        runCatching { tts?.stop(); tts?.shutdown() }
-        runCatching { tone?.stopTone(); tone?.release() }
-        releasePlayer()
+        // 停止前台播报服务，避免声音继续
+        runCatching { ForegroundAlarmService.stop(this) }
         runCatching {
-            (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).cancel()
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .cancel(intent?.getLongExtra(AlarmReceiver.EXTRA_ID, -1L)?.hashCode() ?: 0)
         }
         finish()
     }
 
-    private fun releasePlayer() {
-        runCatching { player?.stop() }
-        runCatching { player?.release() }
-        player = null
-    }
-
     override fun onDestroy() {
-        if (!stopped) {
-            handler.removeCallbacksAndMessages(null)
-            runCatching { tts?.stop(); tts?.shutdown() }
-            runCatching { tone?.stopTone(); tone?.release() }
-            releasePlayer()
-            runCatching { (getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).cancel() }
-        }
         super.onDestroy()
     }
 
@@ -231,6 +74,5 @@ class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         const val EXTRA_MODE = "alarm_mode"
         const val EXTRA_REPEAT = "alarm_repeat"
         const val EXTRA_TIME = "alarm_time"
-        const val DURATION_MS = 120_000L
     }
 }

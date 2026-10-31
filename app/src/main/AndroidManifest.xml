@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 前台播报服务：锁屏/后台也能播报声音 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
@@ -33,6 +36,12 @@
             android:taskAffinity=""
             android:theme="@style/Theme.ElderReminder.Alarm"
             android:turnScreenOn="true" />
+
+        <!-- 前台播报服务：锁屏/后台播报声音，不依赖 Activity 能否启动 -->
+        <service
+            android:name=".alarm.ForegroundAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <activity
             android:name=".MainActivity"

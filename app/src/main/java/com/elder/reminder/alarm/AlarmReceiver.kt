@@ -13,6 +13,12 @@ import com.elder.reminder.data.ReminderRepository
 import com.elder.reminder.model.Reminder
 import com.elder.reminder.model.repeatText
 
+/**
+ * 闹钟到点入口。不再直接 startActivity(AlarmActivity)（Android 10+ 后台禁止，
+ * 会被系统拦截导致声音/弹窗同时失效），改为：
+ *  1. 先启动 ForegroundAlarmService 前台播报服务 —— 保证锁屏/后台一定有声音
+ *  2. 发高优先级通知（带 fullScreenIntent）—— 锁屏亮屏弹全屏页兜底
+ */
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -32,6 +38,15 @@ class AlarmReceiver : BroadcastReceiver() {
             ReminderRepository.upsert(reminder.copy(done = true, enabled = false))
         }
 
+        // 1) 先启动前台播报服务：保证锁屏/后台一定有声音（核心修复）
+        runCatching {
+            ForegroundAlarmService.start(
+                context, id, reminder.title, reminder.mode.name,
+                reminder.repeatText(), reminder.triggerAt
+            )
+        }
+
+        // 2) 发高优先级通知 + fullScreenIntent：锁屏亮屏弹全屏页兜底
         val channelId = CHANNEL_ID
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -69,22 +84,13 @@ class AlarmReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            // 关键：给通知设置真实声音（系统闹钟提示音），
-            // 这样即使全屏 Activity 被系统限制无法弹出，也一定有声音提醒。
             .setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM))
             .setVibrate(longArrayOf(0, 600, 400, 600))
             .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)
             .setAutoCancel(true)
             .build()
-        nm.notify(id.hashCode(), notification)
-
-        // 通知已经带全屏 Intent；再尝试直接拉起，兼容部分厂商。
-        try {
-            context.startActivity(alarmIntent)
-        } catch (_: Exception) {
-            // 被系统拦截时，全屏通知仍是兜底
-        }
+        runCatching { nm.notify(id.hashCode(), notification) }
     }
 
     companion object {
