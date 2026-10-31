@@ -1,6 +1,5 @@
 package com.elder.reminder.alarm
 
-import android.app.Activity
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -15,6 +14,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import com.elder.reminder.ui.alarm.AlarmScreen
 import java.util.Locale
 
@@ -22,7 +22,7 @@ import java.util.Locale
  * 到点提醒：全屏红色界面 + 声音（语音/滴滴）+ 震动。
  * 支持锁屏显示（showWhenLocked + turnScreenOn）以及在其他应用前台时弹出全屏通知。
  */
-class AlarmActivity : Activity(), TextToSpeech.OnInitListener {
+class AlarmActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
