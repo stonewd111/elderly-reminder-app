@@ -269,6 +269,18 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
         runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
+    // Android 14+ 检测是否允许全屏通知（OPPO/ColorOS 默认拒绝，导致锁屏/后台不弹窗）
+    val fullScreenAllowed = remember {
+        if (Build.VERSION.SDK_INT >= 34) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.canUseFullScreenIntent()
+        } else true
+    }
+    // 通知权限是否已授予
+    val notifGranted = remember {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("提醒权限设置") },
@@ -276,10 +288,21 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("为了锁屏、后台也能准时大声提醒，请开启以下权限：", fontSize = 15.sp, color = Color(0xFF667085))
                 Spacer(Modifier.height(10.dp))
-                SettingRow("🔔 通知权限") {
+
+                if (!notifGranted) {
+                    Text("⚠️ 通知权限未开启——锁屏/后台将无法弹窗提醒",
+                        fontSize = 14.sp, color = Color(0xFFE5362F))
+                    Spacer(Modifier.height(6.dp))
+                }
+                SettingRow("🔔 通知权限${if (notifGranted) "（已开启）" else "（未开启）"}") {
                     open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
                 }
-                SettingRow("📱 全屏提醒") {
+                if (Build.VERSION.SDK_INT >= 34 && !fullScreenAllowed) {
+                    Text("⚠️ 全屏提醒权限未开启——锁屏/后台无法弹出红色全屏页",
+                        fontSize = 14.sp, color = Color(0xFFE5362F))
+                    Spacer(Modifier.height(6.dp))
+                }
+                SettingRow("📱 全屏提醒${if (Build.VERSION.SDK_INT >= 34) if (fullScreenAllowed) "（已开启）" else "（未开启）" else ""}") {
                     if (Build.VERSION.SDK_INT >= 34) {
                         open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}")))
                     } else {
@@ -294,6 +317,12 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                 }
                 SettingRow("🎤 麦克风权限") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                }
+                SettingRow("📂 后台运行（OPPO 需允许自启动+后台无限制）") {
+                    open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                }
+                SettingRow("🗣️ 语音引擎（语音提醒无声时，检查是否安装了中文语音）") {
+                    open(Intent("android.speech.tts.engine.INSTALL_TTS_DATA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(

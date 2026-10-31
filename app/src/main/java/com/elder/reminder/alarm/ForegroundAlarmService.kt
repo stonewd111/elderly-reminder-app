@@ -104,12 +104,36 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         tryStartAlarmActivity()
 
         if (mode == "VOICE") {
-            tts = TextToSpeech(this, this)
+            // 优先播放内置人声提示音（不依赖系统 TTS，OPPO 等设备也能发声）
+            if (!startVoiceLoop()) {
+                tts = TextToSpeech(this, this)
+            }
         } else {
             startBeep()
         }
         handler.postDelayed(stopRunnable, DURATION_MS)
         return START_NOT_STICKY
+    }
+
+    /** 循环播放内置"到点了，请注意！"人声。成功返回 true；失败（文件异常）返回 false，降级 TTS。 */
+    private fun startVoiceLoop(): Boolean {
+        return runCatching {
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                val afd = resources.openRawResourceFd(R.raw.alarm_voice)
+                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                afd.close()
+                isLooping = true
+                prepare()
+                start()
+            }
+            true
+        }.getOrDefault(false)
     }
 
     private var intent: Intent? = null
