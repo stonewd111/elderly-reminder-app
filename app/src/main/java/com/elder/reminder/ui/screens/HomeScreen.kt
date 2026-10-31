@@ -19,10 +19,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -174,6 +176,15 @@ fun HomeScreen(
     }
 }
 
+/** 计算某条提醒的下一次实际触发时间（重复提醒用调度器算未来；单次用 triggerAt，已过期返回 null）。 */
+private fun nextFireAt(r: Reminder, now: Long): Long? {
+    return when (r.repeat) {
+        Reminder.Repeat.None -> if (r.triggerAt > now) r.triggerAt else null
+        else -> com.elder.reminder.alarm.ReminderScheduler.nextTrigger(r, now)
+    }
+}
+
+/** 今日提醒：下一次触发落在今天 0点 ~ 明天 0点 之间。 */
 private fun upcomingToday(items: List<Reminder>): List<Reminder> {
     val cal = Calendar.getInstance()
     val start = (cal.clone() as Calendar).apply {
@@ -184,12 +195,25 @@ private fun upcomingToday(items: List<Reminder>): List<Reminder> {
     val now = System.currentTimeMillis()
     return items.filter { r ->
         if (!r.enabled || r.done) return@filter false
-        val next = when (r.repeat) {
-            Reminder.Repeat.None -> if (r.triggerAt > now) r.triggerAt else null
-            else -> com.elder.reminder.alarm.ReminderScheduler.nextTrigger(r, now)
-        }
+        val next = nextFireAt(r, now)
         next != null && next in start until end
-    }.sortedBy { it.triggerAt }
+    }.sortedBy { nextFireAt(it, now) ?: it.triggerAt }
+}
+
+/** 未来提醒：下一次触发在明天 0点 及以后（不含今天）。 */
+private fun upcomingFuture(items: List<Reminder>): List<Reminder> {
+    val cal = Calendar.getInstance()
+    val tomorrowStart = (cal.clone() as Calendar).apply {
+        add(Calendar.DAY_OF_YEAR, 1)
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val now = System.currentTimeMillis()
+    return items.filter { r ->
+        if (!r.enabled || r.done) return@filter false
+        val next = nextFireAt(r, now)
+        next != null && next >= tomorrowStart
+    }.sortedBy { nextFireAt(it, now) ?: it.triggerAt }
 }
 
 /** 全部提醒列表 */
@@ -198,16 +222,18 @@ fun ReminderListScreen(
     items: List<Reminder>,
     onAdd: () -> Unit,
     onEdit: (Reminder) -> Unit,
-    onToggle: (Reminder, Boolean) -> Unit
+    onToggle: (Reminder, Boolean) -> Unit,
+    onDelete: (Reminder) -> Unit,
+    onDeleteAllDone: () -> Unit
 ) {
     var filter by remember { mutableStateOf(0) } // 0全部 1今天 2未来 3已完成
     val filters = listOf("全部", "今天", "未来", "已完成")
+    var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
 
-    val now = System.currentTimeMillis()
     val shown = remember(items, filter) {
         when (filter) {
             1 -> upcomingToday(items)
-            2 -> items.filter { it.enabled && !it.done && it.triggerAt > now }
+            2 -> upcomingFuture(items)
             3 -> items.filter { it.done }
             else -> items
         }
@@ -223,6 +249,21 @@ fun ReminderListScreen(
                 color = BlueDeep,
                 modifier = Modifier.weight(1f)
             )
+            if (filter == 3 && items.any { it.done }) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFFFE4E2),
+                    modifier = Modifier.clickable { confirmDelete = Reminder(id = 0, title = "", triggerAt = 0) }
+                ) {
+                    Text(
+                        "一键删除",
+                        fontSize = 14.sp,
+                        color = Color(0xFFE5362F),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+            }
             IconButton(onClick = onAdd) {
                 Text("＋", fontSize = 30.sp, color = BluePrimary)
             }
@@ -273,10 +314,49 @@ fun ReminderListScreen(
                             )
                         }
                     )
+                    // 每项操作行：编辑 / 删除（老人也能直接删，无需进编辑器找删除按钮）
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "✏️ 编辑",
+                            fontSize = 14.sp,
+                            color = BluePrimary,
+                            modifier = Modifier.clickable { onEdit(r) }.padding(vertical = 6.dp, horizontal = 8.dp)
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "🗑 删除",
+                            fontSize = 14.sp,
+                            color = Color(0xFFE5362F),
+                            modifier = Modifier.clickable { confirmDelete = r }.padding(vertical = 6.dp, horizontal = 8.dp)
+                        )
+                    }
                 }
                 Spacer(Modifier.height(20.dp))
             }
         }
+    }
+
+    if (confirmDelete != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text(if (confirmDelete!!.id == 0L) "一键删除" else "删除提醒") },
+            text = {
+                Text(
+                    if (confirmDelete!!.id == 0L) "确定删除所有已完成的提醒吗？"
+                    else "确定删除“${confirmDelete!!.title}”吗？"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (confirmDelete!!.id == 0L) onDeleteAllDone() else onDelete(confirmDelete!!)
+                    confirmDelete = null
+                }) { Text("删除", color = Color(0xFFE5362F)) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("取消") } }
+        )
     }
 }
 

@@ -67,11 +67,13 @@ fun EditorScreen(
         c.timeInMillis
     }
 
-    var title by remember { mutableStateOf(initial?.title ?: parsed?.title ?: "") }
-    var triggerAt by remember { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
-    var mode by remember { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
-    var category by remember { mutableStateOf(initial?.category ?: Reminder.Category.OTHER) }
-    var repeat by remember { mutableStateOf<Reminder.Repeat>(initial?.repeat ?: Reminder.Repeat.None) }
+    // 用 id 作为 key，切换不同提醒时状态正确重置（避免上一提醒内容残留）
+    val initKey = initial?.id ?: -1L
+    var title by remember(initKey, spokenText) { mutableStateOf(initial?.title ?: parsed?.title ?: "") }
+    var triggerAt by remember(initKey, spokenText) { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
+    var mode by remember(initKey) { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
+    var category by remember(initKey) { mutableStateOf(initial?.category ?: Reminder.Category.OTHER) }
+    var repeat by remember(initKey) { mutableStateOf<Reminder.Repeat>(initial?.repeat ?: Reminder.Repeat.None) }
     var step by remember { mutableIntStateOf(1) }
     var showDelete by remember { mutableStateOf(false) }
 

@@ -60,4 +60,8 @@ object ReminderRepository {
     fun remove(id: Long) {
         persist(_items.value.filterNot { it.id == id })
     }
+
+    fun removeAllDone() {
+        persist(_items.value.filterNot { it.done })
+    }
 }

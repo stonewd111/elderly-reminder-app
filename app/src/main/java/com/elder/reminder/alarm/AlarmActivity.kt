@@ -61,11 +61,12 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun finishAlarm() {
-        // 停止前台播报服务，避免声音继续
-        runCatching { ForegroundAlarmService.stop(this) }
+        val id = intent?.getLongExtra(AlarmReceiver.EXTRA_ID, -1L) ?: -1L
+        // 只停止本条提醒的播报（同一时刻多个提醒并存时不影响其他）
+        runCatching { ForegroundAlarmService.stop(this, id) }
         runCatching {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .cancel(intent?.getLongExtra(AlarmReceiver.EXTRA_ID, -1L)?.hashCode() ?: 0)
+                .cancel(id.hashCode())
         }
         finish()
     }

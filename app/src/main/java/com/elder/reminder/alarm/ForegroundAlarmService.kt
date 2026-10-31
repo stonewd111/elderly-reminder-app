@@ -12,13 +12,13 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.net.Uri
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -28,14 +28,14 @@ import com.elder.reminder.data.SoundPrefs
 import java.util.Locale
 
 /**
- * 前台播报服务（核心修复）：闹钟到点先启动本服务播报声音，
- * 不依赖 AlarmActivity 能否启动。Android 10+ 后台禁止直接 startActivity，
- * 若只靠 Activity 播报声音，锁屏/后台时 Activity 被拦截 → 声音和弹窗同时失效。
- *
- * 本服务负责：
- *  - 播报声音（语音 TTS 循环 / 滴滴 / 系统闹钟铃声循环），锁屏后台也能响
- *  - 常驻高优先级前台通知，带 fullScreenIntent（锁屏亮屏弹全屏页兜底）
- *  - tryStartAlarmActivity()：应用在前台时立即弹红色全屏页
+ * 前台播报服务（核心修复）：
+ *  - 保证锁屏/后台也有声音（不依赖 Activity 能否启动）
+ *  - 支持同一时刻多个提醒并存：每个提醒有独立通知（独立 fullScreenIntent + 独立通知ID），
+ *    停止其中一个不影响其他；全部停止后才真正停止服务。
+ *  - 修复 Android 12+ “startForegroundService 后 5 秒内未调用 startForeground”崩溃：
+ *    startForeground 第一时间调用；MediaPlayer.prepare()（同步 IO）移到后台线程，不阻塞主线程。
+ *  - 按 SoundPrefs 全局音效设置播报：system 闹铃 / male 男声 / female 女声 / custom 自定义MP3，
+ *    失败逐级降级（custom→system→TTS→滴滴）。
  */
 class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
 
@@ -44,18 +44,24 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     private var tone: ToneGenerator? = null
     private var player: MediaPlayer? = null
     private var vibrator: Vibrator? = null
-    private var mode = "VOICE"
     private var title = "提醒事项"
+    private var modeText = "VOICE"
+    private var repeatText = ""
     private var startedAt = 0L
     private var stopped = false
     private var ttsReady = false
+    private var playingStarted = false
+    private val timeMap = linkedMapOf<Long, Long>()
 
-    private val stopRunnable = Runnable { stopAlarm() }
+    /** 当前活跃的提醒 id 集合（支持同一时刻多个提醒）。 */
+    private val activeAlarms = linkedSetOf<Long>()
+
+    private val stopRunnable = Runnable { stopAll() }
 
     private val repeatVoice = object : Runnable {
         override fun run() {
             if (stopped) return
-            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { stopAlarm(); return }
+            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { stopAll(); return }
             if (ttsReady) {
                 tts?.speak("到点了，请注意！", TextToSpeech.QUEUE_FLUSH, null, "elder_alarm")
                 handler.postDelayed(this, 5000)
@@ -68,7 +74,7 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     private val repeatBeep = object : Runnable {
         override fun run() {
             if (stopped) return
-            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { stopAlarm(); return }
+            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { stopAll(); return }
             runCatching { tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 600) }
             handler.postDelayed(this, 900)
         }
@@ -82,52 +88,76 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopAlarm()
-            return START_NOT_STICKY
+        // 防御：任何路径都确保 startForeground 已调用（Android 12+ 5 秒限制）。
+        // 用最简通知先行 startForeground，避免后续耗时操作导致超时崩溃。
+        if (!stopped || intent?.action == ACTION_START) {
+            runCatching { startForegroundCompat(buildForegroundNotification()) }
         }
+
         if (intent == null) {
-            stopAlarm()
+            stopAll()
             return START_NOT_STICKY
         }
-        this.intent = intent
 
-        title = intent.getStringExtra(EXTRA_TITLE) ?: "提醒事项"
-        mode = intent.getStringExtra(EXTRA_MODE) ?: "VOICE"
-        startedAt = System.currentTimeMillis()
-        stopped = false
-
-        startForegroundCompat(buildNotification())
-
-        maxAlarmVolume()
-        startVibration()
-
-        // 应用在前台时立即弹红色全屏页；后台被拦截时由 fullScreenIntent 兜底
-        tryStartAlarmActivity()
-
-        // 按全局音效设置播报（用户要求：音效放设置里，不在单次提醒里选）
-        playByPrefs()
-
-        handler.postDelayed(stopRunnable, DURATION_MS)
+        when (intent.action) {
+            ACTION_STOP -> {
+                val id = intent.getLongExtra(AlarmReceiver.EXTRA_ID, -1L)
+                if (id >= 0) stopOne(id) else stopAll()
+            }
+            ACTION_START -> {
+                val id = intent.getLongExtra(AlarmReceiver.EXTRA_ID, -1L)
+                title = intent.getStringExtra(EXTRA_TITLE) ?: "提醒事项"
+                modeText = intent.getStringExtra(EXTRA_MODE) ?: "VOICE"
+                repeatText = intent.getStringExtra(EXTRA_REPEAT) ?: ""
+                val time = intent.getLongExtra(EXTRA_TIME, System.currentTimeMillis())
+                // 加入活跃集合；若首次启动则初始化播报
+                val first = activeAlarms.isEmpty()
+                if (id >= 0) {
+                    activeAlarms.add(id)
+                    timeMap[id] = time
+                }
+                if (first) {
+                    startedAt = System.currentTimeMillis()
+                    stopped = false
+                    playingStarted = false
+                    maxAlarmVolume()
+                    startVibration()
+                    // 应用在前台时立即弹红色全屏页；后台交给 fullScreenIntent 兜底
+                    tryStartAlarmActivity(intent)
+                    // 播放放后台线程，避免同步 prepare() 阻塞主线程导致 5 秒超时崩溃
+                    Thread { playByPrefs() }.start()
+                    handler.postDelayed(stopRunnable, DURATION_MS)
+                } else {
+                    // 已有提醒在播，仅为新提醒补发全屏通知 + 尝试弹页
+                    tryStartAlarmActivity(intent)
+                }
+                // 为每个活跃提醒发独立通知（各自 fullScreenIntent），停止一个不影响其他
+                refreshNotifications()
+            }
+        }
         return START_NOT_STICKY
     }
 
-    /** 按 SoundPrefs 全局音效设置播报：system 闹铃 / male 男声 / female 女声 / custom 自定义MP3。失败逐级降级。 */
+    /** 按 SoundPrefs 全局音效设置播报：system / male / female / custom。失败逐级降级。 */
     private fun playByPrefs() {
+        if (stopped) return
         val type = SoundPrefs.effectiveType()
         val ok = when (type) {
             SoundPrefs.TYPE_CUSTOM -> startCustomLoop()
             SoundPrefs.TYPE_MALE -> startResourceLoop(R.raw.alarm_voice_male)
             SoundPrefs.TYPE_FEMALE -> startResourceLoop(R.raw.alarm_voice)
-            else -> startPlayerLoop() // 系统闹钟铃声
+            else -> startPlayerLoop()
         }
         if (ok) return
-        // 降级链：自定义→系统闹铃→TTS→滴滴
+        // 降级链：custom→系统闹铃→TTS→滴滴
         if (type == SoundPrefs.TYPE_CUSTOM && startPlayerLoop()) return
-        tts = TextToSpeech(this, this)
+        handler.post {
+            if (stopped) return@post
+            tts = TextToSpeech(this, this)
+        }
     }
 
-    /** 循环播放内置人声资源（"到点了，请注意！"）。成功返回 true；失败返回 false。 */
+    /** 循环播放内置人声资源。成功返回 true；失败返回 false。 */
     private fun startResourceLoop(resId: Int): Boolean {
         return runCatching {
             player = MediaPlayer().apply {
@@ -144,6 +174,7 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                 prepare()
                 start()
             }
+            playingStarted = true
             true
         }.getOrDefault(false)
     }
@@ -165,39 +196,65 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                 prepare()
                 start()
             }
+            playingStarted = true
             true
         }.getOrDefault(false)
     }
 
-    private var intent: Intent? = null
-    private val intentId: Long
-        get() = intent?.getLongExtra(AlarmReceiver.EXTRA_ID, -1L) ?: -1L
-
-    /** 尝试启动红色全屏页（仅当应用在前台时才可能成功，后台交给 fullScreenIntent）。 */
-    private fun tryStartAlarmActivity() {
-        if (stopped) return
-        val id = intentId
-        if (id < 0) return
-        val alarmIntent = Intent(this, AlarmActivity::class.java)
-            .putExtra(AlarmReceiver.EXTRA_ID, id)
-            .putExtra(AlarmActivity.EXTRA_TITLE, title)
-            .putExtra(AlarmActivity.EXTRA_MODE, mode)
-            .putExtra(AlarmActivity.EXTRA_REPEAT, intent?.getStringExtra(EXTRA_REPEAT) ?: "")
-            .putExtra(AlarmActivity.EXTRA_TIME, intent?.getLongExtra(EXTRA_TIME, System.currentTimeMillis()) ?: System.currentTimeMillis())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        runCatching { startActivity(alarmIntent) }
+    /** 循环播放系统闹钟铃声，声音响亮、不依赖 TTS/ToneGenerator 硬件。 */
+    private fun startPlayerLoop(): Boolean {
+        return runCatching {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            player = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(this@ForegroundAlarmService, uri)
+                isLooping = true
+                prepare()
+                start()
+            }
+            playingStarted = true
+            true
+        }.getOrDefault(false)
     }
 
-    private fun startForegroundCompat(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= 34) {
-            ServiceCompat.startForeground(this, NOTIF_ID, notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-            startForeground(NOTIF_ID, notification)
+    /** 为每个活跃提醒发独立通知（各自 fullScreenIntent）。 */
+    private fun refreshNotifications() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        activeAlarms.forEach { id ->
+            runCatching { nm.notify(notifId(id), buildAlarmNotification(id)) }
         }
     }
 
-    private fun buildNotification(): Notification {
+    private fun notifId(id: Long): Int = id.hashCode()
+
+    private fun timeOf(id: Long): Long = timeMap[id] ?: System.currentTimeMillis()
+
+    private fun alarmIntentFor(id: Long): Intent {
+        return Intent(this, AlarmActivity::class.java)
+            .putExtra(AlarmReceiver.EXTRA_ID, id)
+            .putExtra(AlarmActivity.EXTRA_TITLE, title)
+            .putExtra(AlarmActivity.EXTRA_MODE, modeText)
+            .putExtra(AlarmActivity.EXTRA_REPEAT, repeatText)
+            .putExtra(AlarmActivity.EXTRA_TIME, timeOf(id))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+
+    /** 尝试启动红色全屏页（仅当应用在前台时才可能成功，后台交给 fullScreenIntent）。 */
+    private fun tryStartAlarmActivity(src: Intent?) {
+        if (stopped) return
+        val id = src?.getLongExtra(AlarmReceiver.EXTRA_ID, -1L) ?: -1L
+        if (id < 0) return
+        val alarmIntent = alarmIntentFor(id)
+            .putExtra(AlarmActivity.EXTRA_TITLE, src?.getStringExtra(EXTRA_TITLE) ?: title)
+        runCatching { startActivity(alarmIntent) }
+    }
+
+    private fun buildAlarmNotification(id: Long): Notification {
         val channelId = AlarmReceiver.CHANNEL_ID
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -211,20 +268,10 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
             }
             nm.createNotificationChannel(channel)
         }
-
-        val id = intentId
-        val alarmIntent = Intent(this, AlarmActivity::class.java)
-            .putExtra(AlarmReceiver.EXTRA_ID, id)
-            .putExtra(AlarmActivity.EXTRA_TITLE, title)
-            .putExtra(AlarmActivity.EXTRA_MODE, mode)
-            .putExtra(AlarmActivity.EXTRA_REPEAT, intent?.getStringExtra(EXTRA_REPEAT) ?: "")
-            .putExtra(AlarmActivity.EXTRA_TIME, intent?.getLongExtra(EXTRA_TIME, System.currentTimeMillis()) ?: System.currentTimeMillis())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val fullScreen = PendingIntent.getActivity(
-            this, id.hashCode(), alarmIntent,
+            this, id.hashCode(), alarmIntentFor(id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         return NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("到点了，请注意！")
@@ -233,10 +280,68 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
-            // 锁屏亮屏弹全屏页兜底：即使后台启动 Activity 被拦截，全屏通知也能拉起。
             .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)
             .build()
+    }
+
+    /** 前台服务常驻通知（最简，仅用于满足前台服务要求）。 */
+    private fun buildForegroundNotification(): Notification {
+        val channelId = AlarmReceiver.CHANNEL_ID
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId, "重要提醒", NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "到点会全屏弹出并大声提醒"
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
+            }
+            nm.createNotificationChannel(channel)
+        }
+        val fullScreen = PendingIntent.getActivity(
+            this, NOTIF_ID, alarmIntentFor(activeAlarms.firstOrNull() ?: -1L),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("提醒进行中")
+            .setContentText(title)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setContentIntent(fullScreen)
+            .build()
+    }
+
+    private fun startForegroundCompat(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            ServiceCompat.startForeground(this, NOTIF_ID, notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
+    }
+
+    private fun maxAlarmVolume() {
+        runCatching {
+            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            audio.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+        }
+    }
+
+    private fun startVibration() {
+        runCatching {
+            val pattern = longArrayOf(0, 700, 500, 700, 500)
+            if (Build.VERSION.SDK_INT >= 26) {
+                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(pattern, 0)
+            }
+        }
     }
 
     override fun onInit(status: Int) {
@@ -265,50 +370,20 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         runCatching {
             tone = ToneGenerator(AudioManager.STREAM_ALARM, 100)
             handler.post(repeatBeep)
-        }.onFailure { stopAlarm() }
+        }.onFailure { stopAll() }
     }
 
-    /** 循环播放系统闹钟铃声，声音响亮、不依赖 TTS/ToneGenerator 硬件。 */
-    private fun startPlayerLoop(): Boolean {
-        return runCatching {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            player = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setDataSource(this@ForegroundAlarmService, uri)
-                isLooping = true
-                prepare()
-                start()
-            }
-            true
-        }.getOrDefault(false)
-    }
-
-    private fun maxAlarmVolume() {
+    /** 停止某个提醒（取消其通知）；若没有其他活跃提醒则停止服务。 */
+    private fun stopOne(id: Long) {
+        activeAlarms.remove(id)
+        timeMap.remove(id)
         runCatching {
-            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            audio.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(notifId(id))
         }
+        if (activeAlarms.isEmpty()) stopAll()
     }
 
-    private fun startVibration() {
-        runCatching {
-            val pattern = longArrayOf(0, 700, 500, 700, 500)
-            if (Build.VERSION.SDK_INT >= 26) {
-                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(pattern, 0)
-            }
-        }
-    }
-
-    private fun stopAlarm() {
+    private fun stopAll() {
         if (stopped) return
         stopped = true
         handler.removeCallbacksAndMessages(null)
@@ -317,7 +392,12 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         runCatching { player?.stop(); player?.release() }
         player = null
         runCatching { vibrator?.cancel() }
-        runCatching { (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIF_ID) }
+        runCatching {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.cancel(NOTIF_ID)
+            activeAlarms.forEach { nm.cancel(notifId(it)) }
+        }
+        activeAlarms.clear()
         stopForegroundCompat()
         stopSelf()
     }
@@ -327,7 +407,7 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
-        stopAlarm()
+        stopAll()
         super.onDestroy()
     }
 
@@ -354,10 +434,11 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
             ContextCompat.startForegroundService(context, intent)
         }
 
-        /** 停止播报（全屏页打开后或用户点击停止时调用，避免声音重复）。 */
-        fun stop(context: Context) {
+        /** 停止某个提醒的播报（全屏页打开后或用户点击停止时调用）。 */
+        fun stop(context: Context, id: Long = -1L) {
             val intent = Intent(context, ForegroundAlarmService::class.java).apply {
                 action = ACTION_STOP
+                putExtra(AlarmReceiver.EXTRA_ID, id)
             }
             context.startService(intent)
         }

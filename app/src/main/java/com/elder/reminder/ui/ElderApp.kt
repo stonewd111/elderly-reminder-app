@@ -167,7 +167,17 @@ fun ElderApp() {
                     items = items,
                     onAdd = { navController.navigate("editor?id=-1") },
                     onEdit = { navController.navigate("editor?id=${it.id}") },
-                    onToggle = scaleUp
+                    onToggle = scaleUp,
+                    onDelete = { r ->
+                        ReminderScheduler.cancel(context, r.id)
+                        ReminderRepository.remove(r.id)
+                        Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
+                    },
+                    onDeleteAllDone = {
+                        ReminderRepository.all().filter { it.done }.forEach { ReminderScheduler.cancel(context, it.id) }
+                        ReminderRepository.removeAllDone()
+                        Toast.makeText(context, "已删除全部完成提醒", Toast.LENGTH_SHORT).show()
+                    }
                 )
             }
             composable(ROUTE_COMMON) {
@@ -239,12 +249,11 @@ fun ElderApp() {
             ) { entry ->
                 val id = entry.arguments?.getLong("id") ?: -1L
                 val text = entry.arguments?.getString("text")?.takeIf { it.isNotBlank() }
+                // 优先加载已存在的提醒（按 id），避免被残留的 prefillTemplate 覆盖导致内容清零/时间错乱。
+                // 仅当 id<=0 且存在模板预填时才用模板（常用页点模板）。
+                val loadedInitial = if (id > 0) ReminderRepository.find(id) else null
                 EditorScreen(
-                    initial = when {
-                        prefillTemplate != null -> prefillTemplate
-                        id > 0 -> ReminderRepository.find(id)
-                        else -> null
-                    },
+                    initial = loadedInitial ?: (if (id <= 0) prefillTemplate else null),
                     spokenText = text,
                     onBack = { prefillTemplate = null; navController.popBackStack() },
                     onVoiceEdit = { vid -> startVoice(vid) },
@@ -386,16 +395,16 @@ private fun SoundSettingSection(context: Context) {
     val customName by SoundPrefs.customName.collectAsState()
 
     val mp3Launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
+        ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
+        val name = queryDisplayName(context, uri) ?: "自定义铃声"
         runCatching {
-            // 持久化读权限，服务播报时也能读取
+            // OpenDocument 保证可持久化读权限，服务播报时也能读取
             context.contentResolver.takePersistableUriPermission(
                 uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         }
-        val name = queryDisplayName(context, uri) ?: "自定义铃声"
         SoundPrefs.setCustom(uri.toString(), name)
         SoundPrefs.setSoundType(SoundPrefs.TYPE_CUSTOM)
         Toast.makeText(context, "已设置提醒音效：$name", Toast.LENGTH_SHORT).show()
@@ -423,7 +432,7 @@ private fun SoundSettingSection(context: Context) {
             soundType == SoundPrefs.TYPE_CUSTOM
         ) {
             if (soundType != SoundPrefs.TYPE_CUSTOM || SoundPrefs.customPath.value.isBlank()) {
-                mp3Launcher.launch("audio/mpeg")
+                mp3Launcher.launch(arrayOf("audio/mpeg", "audio/mp3", "audio/*"))
             } else {
                 SoundPrefs.setSoundType(SoundPrefs.TYPE_CUSTOM)
             }
@@ -432,7 +441,8 @@ private fun SoundSettingSection(context: Context) {
     if (soundType == SoundPrefs.TYPE_CUSTOM) {
         Spacer(Modifier.height(4.dp))
         Text(
-            "自定义 MP3 需在 10MB 以内，建议时长 3~10 秒并提前录好“到点了，请注意！”。选择后自动生效，重新选择可更换。",
+            "规则：MP3 格式，时长 30 秒以内（建议 3~15 秒），内容建议提前录好“到点了，请注意！”。" +
+                "到点会循环播放，直到点击停止。选好后点下面的“知道了”关闭，下次提醒自动生效。",
             fontSize = 12.sp, color = Color(0xFF667085)
         )
     }

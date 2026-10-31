@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.elder.reminder.domain.TimeFormats
 import com.elder.reminder.ui.theme.AlarmRed
 import com.elder.reminder.ui.theme.AlarmRedDark
+import com.elder.reminder.ui.theme.TextPrimary
 
 /**
  * 到点提醒全屏页（界面2 第8屏重设计）：
@@ -103,10 +105,10 @@ fun AlarmScreen(
 
             Spacer(Modifier.height(28.dp))
 
-            // 中间：放大提醒框（左上角时间 + 中间内容）
+            // 中间：放大提醒框（白色实底 + 深色字，左上角时间 + 中间内容）
             Surface(
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White.copy(alpha = 0.14f),
+                color = Color.White,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp)) {
@@ -115,7 +117,7 @@ fun AlarmScreen(
                             TimeFormats.time(timeMillis),
                             fontSize = 34.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = AlarmRedDark
                         )
                     }
                     Spacer(Modifier.height(22.dp))
@@ -124,7 +126,7 @@ fun AlarmScreen(
                         fontSize = 30.sp,
                         lineHeight = 40.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = TextPrimary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -133,17 +135,18 @@ fun AlarmScreen(
 
             Spacer(Modifier.weight(1f))
 
-            // 底部：停止提醒按钮
+            // 底部：停止提醒按钮（红色半透明底 + 白色描边 + 白字）
             Surface(
                 shape = RoundedCornerShape(34.dp),
-                color = Color.White,
+                color = Color.White.copy(alpha = 0.12f),
+                border = androidx.compose.foundation.BorderStroke(3.dp, Color.White),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(72.dp),
                 onClick = onStop
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("停止提醒", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = AlarmRedDark)
+                    Text("停止提醒", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
 
