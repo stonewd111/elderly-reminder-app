@@ -8,6 +8,15 @@ android {
     namespace = "com.elder.reminder"
     compileSdk = 35
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("elder-release.jks")
+            storePassword = "elder2026"
+            keyAlias = "elder"
+            keyPassword = "elder2026"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.elder.reminder"
         minSdk = 26
@@ -37,6 +46,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
