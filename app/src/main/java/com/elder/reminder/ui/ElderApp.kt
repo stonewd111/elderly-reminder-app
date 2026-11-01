@@ -81,6 +81,8 @@ fun ElderApp() {
     var pendingVoiceId by remember { mutableStateOf<Long?>(null) }
     // 常用模板点击后预填编辑页（用户要求：点类型→编辑页确认后才创建提醒）
     var prefillTemplate by remember { mutableStateOf<Reminder?>(null) }
+    // 全部提醒页初始 tab（首页"今日"→今天=1；默认全部=0）
+    var listInitialTab by remember { mutableStateOf(0) }
 
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -165,13 +167,17 @@ fun ElderApp() {
                     recording = voice.active,
                     onVoice = { startVoice(null) },
                     onEdit = { navController.navigate("editor?id=${it.id}") },
-                    onOpenList = { navController.navigate(ROUTE_LIST) },
+                    onOpenList = {
+                        listInitialTab = 1 // 首页"今日"→全部提醒"今天"tab
+                        navController.navigate(ROUTE_LIST)
+                    },
                     onSettings = { showSettings = true }
                 )
             }
             composable(ROUTE_LIST) {
                 ReminderListScreen(
                     items = items,
+                    initialTab = listInitialTab,
                     onAdd = { navController.navigate("editor?id=-1") },
                     onEdit = { navController.navigate("editor?id=${it.id}") },
                     onToggle = scaleUp,
@@ -184,14 +190,6 @@ fun ElderApp() {
                         ReminderRepository.all().filter { it.done }.forEach { ReminderScheduler.cancel(context, it.id) }
                         ReminderRepository.removeAllDone()
                         Toast.makeText(context, "已删除全部完成提醒", Toast.LENGTH_SHORT).show()
-                    },
-                    // 点"已服用"：标记完成、取消后续调度（从"今天/延误"进入"已完成"）
-                    onMarkTaken = { r ->
-                        ReminderRepository.upsert(
-                            r.copy(done = true, delayed = false, triggered = false, enabled = false)
-                        )
-                        ReminderScheduler.cancel(context, r.id)
-                        Toast.makeText(context, "已标记为已服用", Toast.LENGTH_SHORT).show()
                     }
                 )
             }

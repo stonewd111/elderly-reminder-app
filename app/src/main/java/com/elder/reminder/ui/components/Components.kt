@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -163,19 +164,17 @@ private fun categoryAccent(category: String): Color = when (category) {
 }
 
 /**
- * 提醒卡片（v1.4.0 用户要求的全新排版）：
- *  - 左上角：提醒时间；提醒图标在时间正上方
- *  - 图标下方：分类名称 → 次小类（无则不显示）
- *  - 内容按（"药品"：提醒内容）格式呈现
- *  - 右下角：删除按钮
- *  - 新增"已服用"深绿色背景+白色粗体按钮（点选→已完成；未点/自动停止→延误）
+ * 提醒卡片（v1.6.0 按参考图"提醒项布局"全新排版）：
+ *  第一行（字体固定，不随缩放）：[图标] [编号]时间 | 分类 | 次小类 | 删除图标（红色垃圾桶）
+ *  第二行（内容居中，字体随缩放）：药品名+提醒内容
+ *  "已服用"按钮已移除（与右上角滑动按钮功能重复，用户要求去掉）。
  */
 @Composable
 fun ReminderCard(
     reminder: Reminder,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    onTaken: (() -> Unit)? = null,
+    index: Int? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
     val accent = when (reminder.id % 3L) {
@@ -190,91 +189,68 @@ fun ReminderCard(
         shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+            // ===== 第一行：图标 | [编号]时间 | 分类 | 次小类 | 删除图标（字体固定） =====
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // 左上：图标（在时间正上方），按大类配置（服药/测量/自定义可更换）
                 val icon = CategoryIconPrefs.iconOf(
                     categoryLabelOf(reminder),
                     reminder.category
                 )
                 Box(
-                    Modifier.size(46.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
+                    Modifier.size(34.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     CategoryIconView(
                         icon,
-                        emojiSize = elderSp(22f),
-                        imageSize = 38.dp,
+                        emojiSize = 17.sp,
+                        imageSize = 28.dp,
                         modifier = Modifier
                     )
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    // 时间（左上角，图标正下方）
-                    Text(
-                        TimeFormats.time(reminder.triggerAt),
-                        fontSize = elderSp(22f),
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                    // 分类名称 → 次小类（自定义大类用 categoryLabel 显示名）
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Tag(categoryLabelOf(reminder), catColor)
-                        if (reminder.subCategory.isNotBlank()) {
-                            Spacer(Modifier.width(6.dp))
-                            Tag(reminder.subCategory, catColor)
-                        }
-                    }
+                Spacer(Modifier.width(8.dp))
+                // [编号] 时间（编号为首页今日序号，其余页不显示）
+                Text(
+                    (if (index != null) "[$index] " else "") + TimeFormats.time(reminder.triggerAt),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    maxLines = 1
+                )
+                Spacer(Modifier.width(8.dp))
+                // 分类名 → 次小类
+                Tag(categoryLabelOf(reminder), catColor)
+                if (reminder.subCategory.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Tag(reminder.subCategory, catColor)
                 }
+                Spacer(Modifier.weight(1f))
+                // 右上角：滑动按钮（全部提醒页）或首页编号占位
                 if (trailing != null) {
                     trailing()
-                } else {
-                    Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
+                    Spacer(Modifier.width(4.dp))
+                }
+                // 删除：红色垃圾桶图标
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = "删除",
+                        tint = Color(0xFFE5362F),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            // 内容按（"药品"：提醒内容）格式呈现
+            Spacer(Modifier.height(6.dp))
+            // ===== 第二行：内容（药品名+提醒内容），字体随缩放，居中 =====
             val display = displayText(reminder)
             if (display.isNotBlank()) {
-                Text(display, fontSize = elderSp(18f), color = TextPrimary, maxLines = 2)
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                TimeFormats.dayLabel(reminder.triggerAt) + "  " + reminder.repeatText(),
-                fontSize = elderSp(14f),
-                color = TextSecondary
-            )
-
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // "已服用"深绿色背景+白色粗体（点选→已完成）；非服药类不显示
-                if (reminder.category == Reminder.Category.MEDICATION && onTaken != null) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF12B76A),
-                        onClick = onTaken
-                    ) {
-                        Text(
-                            "已服用",
-                            fontSize = elderSp(16f),
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                } else {
-                    Spacer(Modifier.weight(1f))
-                }
-                // 删除按钮右下角
                 Text(
-                    "🗑 删除",
-                    fontSize = elderSp(14f),
-                    color = Color(0xFFE5362F),
-                    modifier = Modifier
-                        .clickable(onClick = onDelete)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                    display,
+                    fontSize = elderSp(18f),
+                    color = TextPrimary,
+                    maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }

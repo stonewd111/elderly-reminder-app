@@ -51,7 +51,6 @@ import com.elder.reminder.domain.weekdayCn
 import com.elder.reminder.model.Reminder
 import com.elder.reminder.ui.components.BigMicButton
 import com.elder.reminder.ui.components.ReminderCard
-import com.elder.reminder.ui.components.SectionTitle
 import com.elder.reminder.ui.theme.BlueDeep
 import com.elder.reminder.ui.theme.BluePrimary
 import com.elder.reminder.ui.theme.TextPrimary
@@ -107,38 +106,57 @@ fun HomeScreen(
                     .background(
                         Brush.horizontalGradient(listOf(Color(0xFFEAF1FF), Color(0xFFF7FAFF)))
                     )
-                    .padding(14.dp),
+                    .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 日期（左侧，约占 60%）
-                Row(
-                    Modifier.weight(0.6f),
-                    verticalAlignment = Alignment.CenterVertically
+                // 日期区（左侧，约 60%）：两行，上"日期 星期"占满一行，下"图标 | 农历"
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                    modifier = Modifier.weight(0.62f)
                 ) {
-                    Box(
-                        Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(Color.White),
-                        contentAlignment = Alignment.Center
-                    ) { Text("📅", fontSize = 22.sp) }
-                    Spacer(Modifier.width(10.dp))
                     Column {
+                        // 第一行：日期 + 星期，占满一行，字体固定
                         Text(
                             "$dateTitle $weekday",
                             fontSize = 19.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BlueDeep
+                            color = BlueDeep,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 1
                         )
-                        if (lunar.isNotBlank()) {
-                            Text(lunar, fontSize = 13.sp, color = TextSecondary)
+                        // 分隔线
+                        Box(
+                            Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE5EAF3))
+                        )
+                        // 第二行：图标 | 农历
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) { Text("📅", fontSize = 18.sp) }
+                            Box(
+                                Modifier.width(1.dp).height(24.dp).background(Color(0xFFE5EAF3))
+                            )
+                            Text(
+                                if (lunar.isNotBlank()) "农历$lunar" else "",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.weight(1.6f).padding(vertical = 6.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                maxLines = 1
+                            )
                         }
                     }
                 }
-                // 录音按钮（右侧，约 40%），按压说话
+                Spacer(Modifier.width(12.dp))
+                // 录音按钮（右侧，约 38%），按压说话
                 Box(
                     Modifier
-                        .weight(0.4f)
+                        .weight(0.38f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (recording) Color(0xFF3B82F6) else Color(0xFF155EEF))
                         .pointerInput(Unit) {
@@ -174,12 +192,38 @@ fun HomeScreen(
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState())
         ) {
+            // 第一行：今日提醒 + 数量；右侧"今日"进全部提醒的"今天"界面，字体固定不随缩放
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("今天的提醒", Modifier.weight(1f))
+                Row(
+                    Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "今日提醒",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    // 今日提醒数量
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = BluePrimary
+                    ) {
+                        Text(
+                            "${todayReminders.size}",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                        )
+                    }
+                }
                 Text(
-                    "全部提醒 >",
-                    fontSize = elderSp(15f),
+                    "今日 >",
+                    fontSize = 15.sp,
                     color = BluePrimary,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { onOpenList() }
                 )
             }
@@ -195,16 +239,6 @@ fun HomeScreen(
                     }
                 }
             } else {
-                // 今日提醒计数
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "今日共 ${todayReminders.size} 条",
-                        fontSize = elderSp(15f),
-                        color = TextSecondary
-                    )
-                    Spacer(Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     todayReminders.take(6).forEachIndexed { idx, r ->
                         // 每个提醒左上角时间前编号：粗体[x]
@@ -212,14 +246,7 @@ fun HomeScreen(
                             reminder = r,
                             onClick = { onEdit(r) },
                             onDelete = { onEdit(r) },
-                            trailing = {
-                                Text(
-                                    "[${idx + 1}]",
-                                    fontSize = elderSp(20f),
-                                    fontWeight = FontWeight.Bold,
-                                    color = BluePrimary
-                                )
-                            }
+                            index = idx + 1
                         )
                     }
                 }
@@ -331,9 +358,9 @@ fun ReminderListScreen(
     onToggle: (Reminder, Boolean) -> Unit,
     onDelete: (Reminder) -> Unit,
     onDeleteAllDone: () -> Unit,
-    onMarkTaken: (Reminder) -> Unit
+    initialTab: Int = 0 // 0全部 1今天 2延误 3未来 4已完成
 ) {
-    var filter by remember { mutableStateOf(0) } // 0全部 1今天 2延误 3未来 4已完成
+    var filter by remember { mutableStateOf(initialTab) } // 0全部 1今天 2延误 3未来 4已完成
     var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
 
     val todayList = remember(items) { upcomingToday(items) }
@@ -427,7 +454,6 @@ fun ReminderListScreen(
                         r,
                         onClick = { onEdit(r) },
                         onDelete = { confirmDelete = r },
-                        onTaken = { onMarkTaken(r) },
                         trailing = {
                             androidx.compose.material3.Switch(
                                 checked = r.enabled && !r.done,
@@ -471,8 +497,11 @@ fun CommonScreen(
     onDeleteCustomCategory: (String) -> Unit
 ) {
     val customItems by com.elder.reminder.data.CommonCategoryPrefs.items.collectAsState()
+    val extraSubs by com.elder.reminder.data.CommonCategoryPrefs.extraSubs.collectAsState()
     var showAddCategory by remember { mutableStateOf(false) }
-    var addCategoryTo by remember { mutableStateOf<String?>(null) }
+    // 统一的"+次小类"弹窗：选择主分类 + 添加次分类
+    var showAddSubItem by remember { mutableStateOf(false) }
+    var addSubItemCategory by remember { mutableStateOf<String?>(null) }
     // 删除模式：点"删除"后进入，分类/次小类右上角出现红色"-"，点"-"删除对应项，点"确定"退出。
     var deleteMode by remember { mutableStateOf(false) }
     // 图标更换：点某大类图标弹出选择器（iconPickerLabel 存大类 label；null 表示关闭）
@@ -490,37 +519,21 @@ fun CommonScreen(
             iconPickerLabel = null
         }
     }
-    // 合并内建固定 + 用户自定义大类（固定类不可删除、不可加次小类）
-    val groups = remember(customItems) {
-        listOf(
-            CategoryGroup("服药", Reminder.Category.MEDICATION, "💊",
-                com.elder.reminder.data.CommonCategoryPrefs.builtinGroups[0].second, true),
-            CategoryGroup("测血压血糖", Reminder.Category.HEALTH, "🩺",
-                com.elder.reminder.data.CommonCategoryPrefs.builtinGroups[1].second, true)
-        ) + customItems.map { c ->
-            CategoryGroup(c.label, Reminder.Category.OTHER, "📌",
-                c.subItems.ifEmpty { listOf("其他") }, false)
-        }
+    // 大类列表（内建固定 + 用户自定义），无次小类时不再自动补"其他"
+    val groups = remember(customItems, extraSubs) {
+        com.elder.reminder.data.CommonCategoryPrefs.allGroups()
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F7FA)).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(8.dp))
+        // 顶部"常用事项"一行：字体固定（不随缩放），与删除按钮同排，不跨行/竖行
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("常用事项", fontSize = elderSp(28f), fontWeight = FontWeight.Bold, color = BlueDeep, modifier = Modifier.weight(1f))
+            Text(
+                "常用事项",
+                fontSize = 26.sp, fontWeight = FontWeight.Bold, color = BlueDeep,
+                modifier = Modifier.weight(1f)
+            )
             if (!deleteMode) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFEAF1FF),
-                    modifier = Modifier.clickable { showAddCategory = true }
-                ) {
-                    Text(
-                        "＋ 自定义分类",
-                        fontSize = elderSp(14f),
-                        color = BluePrimary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xFFFFE4E2),
@@ -528,7 +541,7 @@ fun CommonScreen(
                 ) {
                     Text(
                         "🗑 删除",
-                        fontSize = elderSp(14f),
+                        fontSize = 15.sp,
                         color = Color(0xFFE5362F),
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                     )
@@ -542,7 +555,7 @@ fun CommonScreen(
                 ) {
                     Text(
                         "✔ 确定",
-                        fontSize = elderSp(14f),
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
@@ -550,12 +563,48 @@ fun CommonScreen(
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            if (deleteMode) "点红色“-”删除分类或次小类，可连续删除，点“确定”完成"
-            else "点一个小类 → 进入编辑页填写时间和内容后保存",
-            fontSize = elderSp(15f), color = TextSecondary
-        )
+        Spacer(Modifier.height(10.dp))
+        // 第二行："自定义分类"、"＋次小类" 两个浅绿色背景方框，并排一行，字体固定不随缩放
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFDCF3E3),
+                modifier = Modifier.weight(1f).clickable { showAddCategory = true }
+            ) {
+                Text(
+                    "自定义分类",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1B7F4B),
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xFFDCF3E3),
+                modifier = Modifier.weight(1f).clickable {
+                    addSubItemCategory = groups.firstOrNull()?.label
+                    showAddSubItem = true
+                }
+            ) {
+                Text(
+                    "＋次小类",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1B7F4B),
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+        if (deleteMode) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "点红色“-”删除分类或次小类，可连续删除，点“确定”完成",
+                fontSize = elderSp(15f), color = TextSecondary
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Column(
             Modifier.verticalScroll(rememberScrollState()),
@@ -597,28 +646,18 @@ fun CommonScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             if (!deleteMode) {
-                                if (!g.isBuiltin) {
-                                    // 自定义大类可加次小类 / 删除
-                                    Text(
-                                        "＋ 次小类",
-                                        fontSize = elderSp(13f),
-                                        color = BluePrimary,
-                                        modifier = Modifier
-                                            .clickable { addCategoryTo = g.label }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    )
-                                    Text(
-                                        "🗑 删除",
-                                        fontSize = elderSp(13f),
-                                        color = Color(0xFFE5362F),
-                                        modifier = Modifier
-                                            .clickable { com.elder.reminder.data.CommonCategoryPrefs.removeCategory(g.label) }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    )
-                                } else {
-                                    Text("固定", fontSize = elderSp(13f), color = TextSecondary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
-                                }
+                                // 所有大类（含内建服药/测血压血糖）都可添加次小类
+                                Text(
+                                    "＋ 次小类",
+                                    fontSize = elderSp(14f),
+                                    color = BluePrimary,
+                                    modifier = Modifier
+                                        .clickable {
+                                            addSubItemCategory = g.label
+                                            showAddSubItem = true
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
                             } else {
                                 // 删除模式：大类右侧红色"-"（固定类不可删，仅自定义类可删）
                                 if (!g.isBuiltin) {
@@ -634,7 +673,7 @@ fun CommonScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            g.templates.forEach { sub ->
+                            g.subItems.forEach { sub ->
                                 // 次小类项：可选则点击进入编辑；删除模式显示红色"-"
                                 Box {
                                     Surface(
@@ -651,8 +690,8 @@ fun CommonScreen(
                                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                                         )
                                     }
-                                    if (deleteMode && !g.isBuiltin) {
-                                        // 次小类右上角红色"-"（固定类次小类不可删）
+                                    if (deleteMode && sub in g.removableSubs) {
+                                        // 次小类右上角红色"-"（仅可删用户追加的次小类）
                                         DeleteMinusButton(
                                             modifier = Modifier.align(Alignment.TopEnd),
                                             small = true
@@ -683,16 +722,60 @@ fun CommonScreen(
             onDismiss = { showAddCategory = false }
         )
     }
-    if (addCategoryTo != null) {
-        InputTextDialog(
-            title = "添加到「$addCategoryTo」",
-            label = "次小类名称",
-            placeholder = "例如：复查抽血",
-            onConfirm = { name ->
-                com.elder.reminder.data.CommonCategoryPrefs.addSubItem(addCategoryTo!!, name)
-                addCategoryTo = null
+    // "+次小类"弹窗：第一行"选择主分类"，第二行"添加次分类"
+    if (showAddSubItem) {
+        var subName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddSubItem = false },
+            title = { Text("添加次小类") },
+            text = {
+                Column {
+                    Text("选择主分类", fontSize = elderSp(15f), color = TextSecondary)
+                    Spacer(Modifier.height(6.dp))
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        groups.forEach { g ->
+                            val selected = addSubItemCategory == g.label
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (selected) Color(0xFFDCF3E3) else Color(0xFFF7F8FA),
+                                modifier = Modifier.clickable { addSubItemCategory = g.label }
+                            ) {
+                                Text(
+                                    g.label,
+                                    fontSize = elderSp(15f),
+                                    color = if (selected) Color(0xFF1B7F4B) else TextPrimary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text("添加次分类", fontSize = elderSp(15f), color = TextSecondary)
+                    Spacer(Modifier.height(6.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = subName,
+                        onValueChange = { subName = it },
+                        label = { Text("次小类名称") },
+                        placeholder = { Text("例如：复查抽血") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
-            onDismiss = { addCategoryTo = null }
+            confirmButton = {
+                TextButton(onClick = {
+                    val cat = addSubItemCategory
+                    val name = subName.trim()
+                    if (cat != null && name.isNotEmpty()) {
+                        com.elder.reminder.data.CommonCategoryPrefs.addSubItem(cat, name)
+                    }
+                    showAddSubItem = false
+                }) { Text("确定", color = BluePrimary) }
+            },
+            dismissButton = { TextButton(onClick = { showAddSubItem = false }) { Text("取消") } }
         )
     }
 
@@ -824,11 +907,3 @@ private fun InputTextDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
-
-private data class CategoryGroup(
-    val label: String,
-    val category: String,
-    val emoji: String,
-    val templates: List<String>,
-    val isBuiltin: Boolean
-)
