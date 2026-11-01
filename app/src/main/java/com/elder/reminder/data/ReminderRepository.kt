@@ -30,11 +30,22 @@ object ReminderRepository {
         val ctx = appContext ?: return
         val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
         val arr = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
-        val out = mutableListOf<Reminder>()
+        val parsed = mutableListOf<Reminder>()
         for (i in 0 until arr.length()) {
-            runCatching { out.add(Reminder.fromJson(arr.getJSONObject(i))) }
+            runCatching { parsed.add(Reminder.fromJson(arr.getJSONObject(i))) }
+        }
+        // 保证新 id 大于已存 id，时钟回拨时也不会与旧提醒冲突
+        parsed.maxOfOrNull { it.id }?.let { max -> if (max > ids.get()) ids.set(max) }
+        var migrated = false
+        val out = parsed.map { r ->
+            // 旧版本"常用"页模板以 id=-1 保存，会导致后建提醒覆盖前一条；这里补发唯一 id
+            if (r.id <= 0L) {
+                migrated = true
+                r.copy(id = nextId())
+            } else r
         }
         _items.value = out.sortedBy { it.triggerAt }
+        if (migrated) persist(_items.value)
     }
 
     private fun persist(list: List<Reminder>) {

@@ -69,8 +69,12 @@ fun EditorScreen(
         c.timeInMillis
     }
 
+    // 新增判定：无初始数据，或来自"常用"页模板（id<=0 的临时对象）都算新增
+    val isNew = initial == null || initial.id <= 0
+    val existingId = initial?.id?.takeIf { it > 0 }
+
     // 用 id 作为 key，切换不同提醒时状态正确重置（避免上一提醒内容残留）
-    val initKey = initial?.id ?: -1L
+    val initKey = existingId ?: -1L
     var title by remember(initKey, spokenText) { mutableStateOf(initial?.title ?: parsed?.title ?: "") }
     var triggerAt by remember(initKey, spokenText) { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
     var mode by remember(initKey) { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
@@ -94,14 +98,14 @@ fun EditorScreen(
             return
         }
         val reminder = Reminder(
-            id = initial?.id ?: ReminderRepository.nextId(),
+            id = existingId ?: ReminderRepository.nextId(),
             title = t,
             triggerAt = triggerAt,
             mode = mode,
             repeat = repeat,
             enabled = true,
             done = false,
-            createdAt = initial?.createdAt ?: System.currentTimeMillis(),
+            createdAt = initial?.createdAt?.takeIf { !isNew } ?: System.currentTimeMillis(),
             category = category,
             categoryLabel = categoryLabel,
             drug = d,
@@ -115,7 +119,7 @@ fun EditorScreen(
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F7FA))) {
         ScreenHeader(
-            if (step == 1) (if (initial == null) "新增提醒" else "编辑提醒") else "设置周期",
+            if (step == 1) (if (isNew) "新增提醒" else "编辑提醒") else "设置周期",
             onBack = { if (step == 2) step = 1 else onBack() }
         )
         Column(
@@ -125,7 +129,7 @@ fun EditorScreen(
             if (step == 1) {
                 // 语音录入卡片（手动输入已按用户要求删除——直接输入提醒内容即可）
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ModeCard("🎙", "语音录入", "说出提醒内容", true, Modifier.weight(1f)) { onVoiceEdit(initial?.id) }
+                    ModeCard("🎙", "语音录入", "说出提醒内容", true, Modifier.weight(1f)) { onVoiceEdit(existingId) }
                     // 手动输入已删除，右侧用"直接填写"说明卡片占位，保持版面均衡
                     ModeCard("✏️", "直接填写", "在下方输入内容", false, Modifier.weight(1f)) { }
                 }
@@ -232,7 +236,7 @@ fun EditorScreen(
         }
     }
 
-    if (showDelete && initial != null) {
+    if (showDelete && initial != null && existingId != null) {
         AlertDialog(
             onDismissRequest = { showDelete = false },
             title = { Text("删除提醒") },
@@ -240,8 +244,8 @@ fun EditorScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDelete = false
-                    ReminderScheduler.cancel(context, initial.id)
-                    ReminderRepository.remove(initial.id)
+                    ReminderScheduler.cancel(context, existingId)
+                    ReminderRepository.remove(existingId)
                     onDeleted()
                 }) { Text("删除", color = Color(0xFFE5362F)) }
             },
