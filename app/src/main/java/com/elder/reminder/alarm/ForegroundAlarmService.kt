@@ -430,6 +430,12 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
     }
 
+    /** 用户从最近任务把 App 划掉：进程会被直接杀掉，onDestroy 不一定回调，需在此补记延误。 */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopAll()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         stopAll()
         super.onDestroy()
