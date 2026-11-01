@@ -2,6 +2,7 @@ package com.elder.reminder.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.elder.reminder.model.Reminder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -15,6 +16,20 @@ import org.json.JSONObject
 object CommonCategoryPrefs {
     data class CustomCategory(val label: String, val subItems: List<String>)
 
+    /** 内建大类（固定，次小类不可增删）。 */
+    val builtinGroups: List<Pair<String, List<String>>> = listOf(
+        "服药" to listOf("降压药", "降糖药", "睡前药", "其他"),
+        "测血压血糖" to listOf("量血压", "测血糖")
+    )
+
+    /** 常用页展示的大类列表：内建固定 + 用户自定义。每项含是否可删除、是否可加次小类。 */
+    data class CategoryGroup(
+        val label: String,
+        val subItems: List<String>,
+        val isBuiltin: Boolean,
+        val category: String
+    )
+
     private const val PREFS = "elder_common_categories"
     private const val KEY = "items"
 
@@ -26,6 +41,28 @@ object CommonCategoryPrefs {
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         _items.value = load()
     }
+
+    /** 常用页完整大类列表（内建 + 自定义）。 */
+    fun allGroups(): List<CategoryGroup> {
+        val out = mutableListOf<CategoryGroup>()
+        out += CategoryGroup("服药", builtinGroups[0].second, true, Reminder.Category.MEDICATION)
+        out += CategoryGroup("测血压血糖", builtinGroups[1].second, true, Reminder.Category.HEALTH)
+        _items.value.forEach { c ->
+            out += CategoryGroup(c.label, c.subItems.ifEmpty { listOf("其他") }, false, Reminder.Category.OTHER)
+        }
+        return out
+    }
+
+    /** 按大类 label 反查其下一次小类列表（内建固定 / 自定义）。 */
+    fun subItemsOf(categoryLabel: String): List<String> = when (categoryLabel) {
+        "服药" -> builtinGroups[0].second
+        "测血压血糖" -> builtinGroups[1].second
+        else -> _items.value.firstOrNull { it.label == categoryLabel }?.subItems?.ifEmpty { listOf("其他") } ?: listOf("其他")
+    }
+
+    /** 大类是否内建固定（不可删除）。 */
+    fun isBuiltin(categoryLabel: String): Boolean =
+        categoryLabel == "服药" || categoryLabel == "测血压血糖"
 
     private fun load(): List<CustomCategory> {
         val raw = prefs.getString(KEY, "[]") ?: "[]"

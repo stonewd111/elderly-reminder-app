@@ -24,7 +24,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.elder.reminder.R
+import com.elder.reminder.data.ReminderRepository
 import com.elder.reminder.data.SoundPrefs
+import com.elder.reminder.model.Reminder
 import java.util.Locale
 
 /**
@@ -51,17 +53,25 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     private var stopped = false
     private var ttsReady = false
     private var playingStarted = false
+    /** 是否因 2 分钟超时自动停止（用于标记"延误"，区别于用户主动停止）。 */
+    private var autoStopped = false
     private val timeMap = linkedMapOf<Long, Long>()
 
     /** 当前活跃的提醒 id 集合（支持同一时刻多个提醒）。 */
     private val activeAlarms = linkedSetOf<Long>()
 
-    private val stopRunnable = Runnable { stopAll() }
+    /** 2 分钟超时自动停止：标记延误后再停止（区分于用户主动停止）。 */
+    private val stopRunnable = Runnable { autoStop() }
+
+    private fun autoStop() {
+        autoStopped = true
+        stopAll()
+    }
 
     private val repeatVoice = object : Runnable {
         override fun run() {
             if (stopped) return
-            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { stopAll(); return }
+            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { autoStop(); return }
             if (ttsReady) {
                 tts?.speak("到点了，请注意！", TextToSpeech.QUEUE_FLUSH, null, "elder_alarm")
                 handler.postDelayed(this, 5000)
@@ -74,7 +84,7 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     private val repeatBeep = object : Runnable {
         override fun run() {
             if (stopped) return
-            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { stopAll(); return }
+            if (System.currentTimeMillis() - startedAt >= DURATION_MS) { autoStop(); return }
             runCatching { tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 600) }
             handler.postDelayed(this, 900)
         }
@@ -385,6 +395,8 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
 
     private fun stopAll() {
         if (stopped) return
+        // 2 分钟超时自动停止 → 尚未点"已服用"的提醒标记为"延误"（用户主动停止则不标记）
+        if (autoStopped) markDelayedAll()
         stopped = true
         handler.removeCallbacksAndMessages(null)
         runCatching { tts?.stop(); tts?.shutdown() }
@@ -400,6 +412,21 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         activeAlarms.clear()
         stopForegroundCompat()
         stopSelf()
+    }
+
+    /**
+     * 把自动停止时仍活跃（未被点"已服用"）的提醒标记为延误。
+     * 仅单次提醒（enabled 已由 AlarmReceiver 置 false）保持停用；
+     * 重复提醒保持 enabled（下次继续），但本次标记 delayed=true。
+     */
+    private fun markDelayedAll() {
+        activeAlarms.forEach { id ->
+            val r = ReminderRepository.find(id) ?: return@forEach
+            if (r.done) return@forEach // 已点"已服用"或已完成，不标记延误
+            ReminderRepository.upsert(
+                r.copy(delayed = true, triggered = false, done = false)
+            )
+        }
     }
 
     private fun stopForegroundCompat() {

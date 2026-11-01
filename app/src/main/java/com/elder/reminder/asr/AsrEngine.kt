@@ -70,17 +70,20 @@ object AsrEngine {
             config.modelConfig.transducer.decoder = File(dir, "decoder.onnx").absolutePath
             config.modelConfig.transducer.joiner = File(dir, "joiner.onnx").absolutePath
             config.modelConfig.tokens = File(dir, "tokens.txt").absolutePath
-            config.modelConfig.numThreads = 2
+            config.modelConfig.numThreads = 4
             config.modelConfig.provider = "cpu"
             config.modelConfig.debug = false
             config.modelConfig.modelType = "zipformer"
 
+            // 按压说话模式：识别过程不因 endpoint 自动结束（由抬起手势结束）。
+            // endpoint 仅作为安全兜底，避免长时间停顿误触发，故放宽静音阈值。
             config.enableEndpoint = true
-            config.endpointConfig.rule1 = EndpointRule(false, 2.4f, 0.0f)
-            config.endpointConfig.rule2 = EndpointRule(true, 0.9f, 0.0f)
+            config.endpointConfig.rule1 = EndpointRule(false, 3.5f, 0.0f)
+            config.endpointConfig.rule2 = EndpointRule(true, 1.5f, 0.0f)
             config.endpointConfig.rule3 = EndpointRule(false, 0.0f, 30.0f)
-            config.decodingMethod = "greedy_search"
-            config.maxActivePaths = 4
+            // 提高识别准确率：改用 beam search，并加大活跃路径数（离线 zipformer 快，代价可忽略）。
+            config.decodingMethod = "modified_beam_search"
+            config.maxActivePaths = 8
 
             // 模型已复制到 filesDir，用绝对路径（file 模式）加载。
             // 注意：不要用 OnlineRecognizer(assets, config)——asset 模式要求相对路径，

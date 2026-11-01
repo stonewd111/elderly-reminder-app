@@ -20,16 +20,18 @@ class AlarmReceiver : BroadcastReceiver() {
         val reminder = ReminderRepository.find(id) ?: return
         if (!reminder.enabled) return
 
-        // 先安排下一次，避免重复提醒断档
+        // 先标记"已触发"（本次响铃中/已响过），待用户处理：
+        //  - 点"已服用"/停止 → 完成（markDone）
+        //  - 无人工触发、2 分钟自动停止 → 延误（markDelayed）
+        // 重复提醒：调度下次（用下次时间副本给调度器，不写回仓库，保留本次状态供显示）
         if (reminder.repeat != Reminder.Repeat.None) {
             val next = ReminderScheduler.nextTrigger(reminder, System.currentTimeMillis() + 1000)
             if (next != null) {
-                val updated = reminder.copy(triggerAt = next, done = false)
-                ReminderRepository.upsert(updated)
-                ReminderScheduler.schedule(context, updated)
+                ReminderScheduler.schedule(context, reminder.copy(triggerAt = next))
+                ReminderRepository.upsert(reminder.copy(triggered = true, enabled = true))
             }
         } else {
-            ReminderRepository.upsert(reminder.copy(done = true, enabled = false))
+            ReminderRepository.upsert(reminder.copy(triggered = true, enabled = false))
         }
 
         // 1) 先启动前台播报服务：保证锁屏/后台一定有声音，并由服务统一发全屏通知+弹页（核心修复）。

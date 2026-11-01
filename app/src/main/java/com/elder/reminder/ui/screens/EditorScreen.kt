@@ -48,6 +48,7 @@ import com.elder.reminder.ui.components.SecondaryButton
 import com.elder.reminder.ui.theme.BluePrimary
 import com.elder.reminder.ui.theme.TextPrimary
 import com.elder.reminder.ui.theme.TextSecondary
+import com.elder.reminder.ui.theme.elderSp
 import java.util.Calendar
 
 @Composable
@@ -74,7 +75,9 @@ fun EditorScreen(
     var triggerAt by remember(initKey, spokenText) { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
     var mode by remember(initKey) { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
     var category by remember(initKey) { mutableStateOf(initial?.category ?: Reminder.Category.OTHER) }
+    var categoryLabel by remember(initKey) { mutableStateOf(initial?.categoryLabel ?: "") }
     var drug by remember(initKey) { mutableStateOf(initial?.drug ?: "") }
+    var subCategory by remember(initKey) { mutableStateOf(initial?.subCategory ?: "") }
     var repeat by remember(initKey) { mutableStateOf<Reminder.Repeat>(initial?.repeat ?: Reminder.Repeat.None) }
     var step by remember { mutableIntStateOf(1) }
     var showDelete by remember { mutableStateOf(false) }
@@ -83,9 +86,11 @@ fun EditorScreen(
     var pickingCategory by remember { mutableStateOf<String?>(null) }
 
     fun save() {
+        // 提醒内容 与 药品名称 2 选 1 填写即可通过（用户要求）
         val t = title.trim()
-        if (t.isEmpty()) {
-            android.widget.Toast.makeText(context, "请填写提醒内容", android.widget.Toast.LENGTH_SHORT).show()
+        val d = drug.trim()
+        if (t.isEmpty() && d.isEmpty()) {
+            android.widget.Toast.makeText(context, "请填写提醒内容或药品名称", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         val reminder = Reminder(
@@ -98,7 +103,9 @@ fun EditorScreen(
             done = false,
             createdAt = initial?.createdAt ?: System.currentTimeMillis(),
             category = category,
-            drug = drug.trim()
+            categoryLabel = categoryLabel,
+            drug = d,
+            subCategory = subCategory.trim()
         )
         ReminderRepository.upsert(reminder)
         ReminderScheduler.schedule(context, reminder)
@@ -129,21 +136,21 @@ fun EditorScreen(
                     onValueChange = { title = it },
                     label = { Text("提醒内容") },
                     placeholder = { Text("例如：吃降压药") },
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 20.sp),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = elderSp(20f)),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
                     minLines = 1
                 )
 
-                // 药名（仅服药类提醒显示）
+                // 药名（仅服药类提醒显示；用户选填，未填留空）
                 if (category == Reminder.Category.MEDICATION) {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = drug,
                         onValueChange = { drug = it },
-                        label = { Text("💊 药名（选填）") },
-                        placeholder = { Text("例如：降压药") },
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 20.sp),
+                        label = { Text("💊 药品名称（选填）") },
+                        placeholder = { Text("例如：氨氯地平") },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = elderSp(20f)),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         singleLine = true
@@ -162,14 +169,16 @@ fun EditorScreen(
                         Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("分类", fontSize = 18.sp, color = TextSecondary, modifier = Modifier.width(90.dp))
+                        Text("分类", fontSize = elderSp(18f), color = TextSecondary, modifier = Modifier.width(90.dp))
                         Text(
-                            Reminder.Category.emoji(category) + " " + Reminder.Category.label(category),
-                            fontSize = 19.sp,
+                            Reminder.Category.emoji(category) + " " +
+                                categoryDisplayName(category, categoryLabel) +
+                                (if (subCategory.isNotBlank()) " · $subCategory" else ""),
+                            fontSize = elderSp(19f),
                             color = TextPrimary,
                             modifier = Modifier.weight(1f)
                         )
-                        Text("＞", fontSize = 20.sp, color = TextSecondary)
+                        Text("＞", fontSize = elderSp(20f), color = TextSecondary)
                     }
                 }
 
@@ -192,7 +201,7 @@ fun EditorScreen(
                 RepeatOptions(repeat) { repeat = it }
 
                 Spacer(Modifier.height(18.dp))
-                Text("提醒时间", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("提醒时间", fontSize = elderSp(18f), fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(8.dp))
                 Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
                     Column {
@@ -250,13 +259,12 @@ fun EditorScreen(
         ) + customItems.map { CategoryChoice(it.label, Reminder.Category.OTHER, "📌") }
 
         // 当前已选大类 label（用于高亮 & 反查次小类）
+        // 优先用保存的 categoryLabel（自定义大类显示名），避免"始终显示自定义"bug
         val currentCategoryLabel = when {
             category == Reminder.Category.MEDICATION -> "服药"
             category == Reminder.Category.HEALTH -> "测血压血糖"
-            category == Reminder.Category.OTHER -> {
-                // 若是自定义大类，用 drug/title 反查不太可靠，直接用第一个自定义；此处以 pickedLabel 为准
-                pickingCategory
-            }
+            category == Reminder.Category.OTHER && categoryLabel.isNotBlank() -> categoryLabel
+            category == Reminder.Category.OTHER -> pickingCategory
             else -> Reminder.Category.label(category)
         }
 
@@ -278,12 +286,16 @@ fun EditorScreen(
                                 modifier = Modifier.fillMaxWidth().clickable {
                                     category = c.category
                                     pickingCategory = c.label
+                                    // 自定义大类（other）记录显示名，内建大类清空
+                                    categoryLabel = if (c.category == Reminder.Category.OTHER) c.label else ""
+                                    // 切换大类时清空上次的次小类，避免残留
+                                    subCategory = ""
                                 }
                             ) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(c.emoji, fontSize = 20.sp)
+                                    Text(c.emoji, fontSize = elderSp(20f))
                                     Spacer(Modifier.width(10.dp))
-                                    Text(c.label, fontSize = 17.sp, color = TextPrimary)
+                                    Text(c.label, fontSize = elderSp(17f), color = TextPrimary)
                                 }
                             }
                         }
@@ -292,15 +304,9 @@ fun EditorScreen(
                 confirmButton = { TextButton(onClick = { showCategoryPicker = false; pickingCategory = null }) { Text("取消") } }
             )
         } else {
-            // 第二步：按大类 label 选次小类
-            val subChoices = when (pickingCategory) {
-                "服药" -> listOf("降压药", "降糖药", "睡前药", "其他")
-                "测血压血糖" -> listOf("量血压", "测血糖")
-                else -> {
-                    val c = customItems.firstOrNull { it.label == pickingCategory }
-                    c?.subItems?.ifEmpty { listOf("其他") } ?: listOf("其他")
-                }
-            }
+            // 第二步：按大类 label 选次小类（统一从常用页配置反查，保证与常用页一致）
+            val currentPicking = pickingCategory!!
+            val subChoices = com.elder.reminder.data.CommonCategoryPrefs.subItemsOf(currentPicking)
             AlertDialog(
                 onDismissRequest = {
                     pickingCategory = null
@@ -314,18 +320,19 @@ fun EditorScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0xFFF7F8FA),
                                 modifier = Modifier.fillMaxWidth().clickable {
-                                    // 选中次小类：服药→药名字段；其他→标题
+                                    // 选中次小类：同步到 subCategory；服药→药名占位（药品名仍由用户填），其他→标题
+                                    subCategory = sub
                                     if (category == Reminder.Category.MEDICATION) {
-                                        drug = sub
+                                        // 次小类如降压药/降糖药放入 subCategory，drug 留给用户填具体药名
                                         if (title.isBlank()) title = "服药"
                                     } else {
-                                        title = sub
+                                        if (title.isBlank()) title = sub
                                     }
                                     pickingCategory = null
                                     showCategoryPicker = false
                                 }
                             ) {
-                                Text(sub, fontSize = 17.sp, color = TextPrimary, modifier = Modifier.padding(14.dp))
+                                Text(sub, fontSize = elderSp(17f), color = TextPrimary, modifier = Modifier.padding(14.dp))
                             }
                         }
                         // 允许自行输入内容
@@ -337,7 +344,7 @@ fun EditorScreen(
                                 showCategoryPicker = false
                             }
                         ) {
-                            Text("自行输入内容", fontSize = 16.sp, color = BluePrimary, modifier = Modifier.padding(14.dp))
+                            Text("自行输入内容", fontSize = elderSp(16f), color = BluePrimary, modifier = Modifier.padding(14.dp))
                         }
                     }
                 },
@@ -346,6 +353,14 @@ fun EditorScreen(
         }
     }
 }
+
+/**
+ * 分类显示名：自定义大类（other）用保存的 categoryLabel（用户定义的分类名），
+ * 内建大类用默认名。修复"在常用选了自定义分类后回到编辑页仍显示'自定义'"的 bug。
+ */
+private fun categoryDisplayName(category: String, categoryLabel: String): String =
+    if (category == Reminder.Category.OTHER && categoryLabel.isNotBlank()) categoryLabel
+    else Reminder.Category.label(category)
 
 /** 分类弹窗用的大类项。 */
 private data class CategoryChoice(val label: String, val category: String, val emoji: String)
@@ -370,10 +385,10 @@ private fun ModeCard(
         modifier = modifier.clickable(onClick = onClick)
     ) {
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(emoji, fontSize = 30.sp)
+            Text(emoji, fontSize = elderSp(30f))
             Spacer(Modifier.height(6.dp))
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = if (highlighted) Color.White else TextPrimary)
-            Text(subtitle, fontSize = 13.sp, color = if (highlighted) Color(0xFFDCE7FF) else TextSecondary)
+            Text(title, fontSize = elderSp(18f), fontWeight = FontWeight.Bold, color = if (highlighted) Color.White else TextPrimary)
+            Text(subtitle, fontSize = elderSp(13f), color = if (highlighted) Color(0xFFDCE7FF) else TextSecondary)
         }
     }
 }
@@ -387,7 +402,7 @@ private fun ModePill(text: String, selected: Boolean, modifier: Modifier = Modif
     ) {
         Text(
             text,
-            fontSize = 16.sp,
+            fontSize = elderSp(16f),
             color = if (selected) Color.White else TextPrimary,
             modifier = Modifier.padding(vertical = 10.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -423,9 +438,9 @@ private fun RepeatRow(text: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (selected) "◉" else "○", fontSize = 20.sp, color = if (selected) BluePrimary else TextSecondary)
+            Text(if (selected) "◉" else "○", fontSize = elderSp(20f), color = if (selected) BluePrimary else TextSecondary)
             Spacer(Modifier.width(12.dp))
-            Text(text, fontSize = 18.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+            Text(text, fontSize = elderSp(18f), color = TextPrimary, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -447,7 +462,7 @@ private fun WeekdayPicker(days: Set<Int>, onChange: (Set<Int>) -> Unit) {
             ) {
                 Text(
                     com.elder.reminder.model.weekdayName(d).removePrefix("周"),
-                    fontSize = 15.sp,
+                    fontSize = elderSp(15f),
                     color = if (on) Color.White else TextPrimary,
                     modifier = Modifier.padding(vertical = 10.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -461,10 +476,10 @@ private fun WeekdayPicker(days: Set<Int>, onChange: (Set<Int>) -> Unit) {
 private fun NumberStepper(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
     Surface(shape = RoundedCornerShape(14.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, fontSize = 16.sp, color = TextSecondary, modifier = Modifier.weight(1f))
-            TextButton(onClick = { if (value > range.first) onChange(value - 1) }) { Text("－", fontSize = 22.sp) }
-            Text("$value", fontSize = 20.sp, color = TextPrimary)
-            TextButton(onClick = { if (value < range.last) onChange(value + 1) }) { Text("＋", fontSize = 22.sp) }
+            Text(label, fontSize = elderSp(16f), color = TextSecondary, modifier = Modifier.weight(1f))
+            TextButton(onClick = { if (value > range.first) onChange(value - 1) }) { Text("－", fontSize = elderSp(22f)) }
+            Text("$value", fontSize = elderSp(20f), color = TextPrimary)
+            TextButton(onClick = { if (value < range.last) onChange(value + 1) }) { Text("＋", fontSize = elderSp(22f)) }
         }
     }
 }

@@ -40,12 +40,16 @@ class AlarmActivity : ComponentActivity() {
         val screenMode = intent.getStringExtra(EXTRA_MODE) ?: "VOICE"
         val screenRepeat = intent.getStringExtra(EXTRA_REPEAT) ?: ""
         val screenTime = intent.getLongExtra(EXTRA_TIME, System.currentTimeMillis())
+        val reminderId = intent.getLongExtra(AlarmReceiver.EXTRA_ID, -1L)
 
         setContentView(
             androidx.compose.ui.platform.ComposeView(this).apply {
                 setContent {
                     val level by com.elder.reminder.data.FontPrefs.level.collectAsState()
                     val theme by com.elder.reminder.data.AlarmThemePrefs.theme.collectAsState()
+                    // 服药类提醒：大屏显示"已服用"按钮（点选→已完成，未点/自动停止→延误）
+                    val reminder = com.elder.reminder.data.ReminderRepository.find(reminderId)
+                    val isMed = reminder?.category == com.elder.reminder.model.Reminder.Category.MEDICATION
                     com.elder.reminder.ui.theme.ElderTheme(scale = com.elder.reminder.data.FontPrefs.scaleOf(level)) {
                         AlarmScreen(
                             title = screenTitle,
@@ -53,13 +57,29 @@ class AlarmActivity : ComponentActivity() {
                             repeatText = screenRepeat,
                             timeMillis = screenTime,
                             alarmTheme = theme,
-                            onStop = { finishAlarm() }
+                            onStop = { finishAlarm() },
+                            onTaken = if (isMed) {
+                                {
+                                    markTaken(reminderId)
+                                    finishAlarm()
+                                }
+                            } else null
                         )
                     }
                 }
             }
         )
         handler.postDelayed({ finishAlarm() }, ForegroundAlarmService.DURATION_MS)
+    }
+
+    /** 点"已服用"：标记该提醒为已完成（done=true），并停止播报。 */
+    private fun markTaken(id: Long) {
+        if (id < 0) return
+        val r = com.elder.reminder.data.ReminderRepository.find(id) ?: return
+        // 单次提醒已完成；重复提醒仅本次置已完成（下次触发重新开启）
+        val updated = r.copy(done = true, delayed = false, triggered = false, enabled = false)
+        com.elder.reminder.data.ReminderRepository.upsert(updated)
+        com.elder.reminder.alarm.ReminderScheduler.cancel(this, id)
     }
 
     private fun finishAlarm() {

@@ -17,8 +17,16 @@ data class Reminder(
     val createdAt: Long = System.currentTimeMillis(),
     /** 提醒分类：medication 服药 / health 测血压血糖 / exercise 运动 / water 饮水 / other 其他 */
     val category: String = "other",
+    /** 自定义分类显示名（仅 category==other 且用户选自定义大类时非空，如"复查"），修复"始终显示自定义"bug */
+    val categoryLabel: String = "",
     /** 药名（仅服药类提醒需要，可空） */
-    val drug: String = ""
+    val drug: String = "",
+    /** 次小类：如降压药、降糖药、量血压、测血糖等（从常用页大类选中同步，可空） */
+    val subCategory: String = "",
+    /** 是否已触发（闹钟已到点响过），用于区分"今天/未来"与"延误" */
+    val triggered: Boolean = false,
+    /** 是否延误：闹钟触发后无人点击"已服用"、系统自动停止 2 分钟后置 true */
+    val delayed: Boolean = false
 ) {
     enum class Mode { VOICE, BEEP }
 
@@ -66,7 +74,11 @@ data class Reminder(
         put("done", done)
         put("createdAt", createdAt)
         put("category", category)
+        put("categoryLabel", categoryLabel)
         put("drug", drug)
+        put("subCategory", subCategory)
+        put("triggered", triggered)
+        put("delayed", delayed)
         put("repeat", repeatToJson(repeat))
     }
 
@@ -81,7 +93,11 @@ data class Reminder(
             done = o.optBoolean("done", false),
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
             category = o.optString("category", "other"),
-            drug = o.optString("drug", "")
+            categoryLabel = o.optString("categoryLabel", ""),
+            drug = o.optString("drug", ""),
+            subCategory = o.optString("subCategory", ""),
+            triggered = o.optBoolean("triggered", false),
+            delayed = o.optBoolean("delayed", false)
         )
 
         private fun repeatToJson(r: Repeat): JSONObject = JSONObject().apply {

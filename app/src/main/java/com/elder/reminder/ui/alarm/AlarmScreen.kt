@@ -42,11 +42,13 @@ import com.elder.reminder.ui.theme.AlarmBlueDark
 import com.elder.reminder.ui.theme.AlarmRed
 import com.elder.reminder.ui.theme.AlarmRedDark
 import com.elder.reminder.ui.theme.TextPrimary
+import com.elder.reminder.ui.theme.elderSp
 
 /**
- * 到点提醒全屏页（用户要求 v1.3.0）：
- *  - 标题两行显示："到点了，" / "请注意！"（最大字体）
- *  - 中间提醒内容框与下方"停止提醒"按钮结合内容排列，内容少时停止按钮上移紧贴内容框
+ * 到点提醒全屏页（v1.4.0）：
+ *  - 标题"到点了，请注意！"单行、按最大字体一次到位，不随字体大小设置调整
+ *  - 大屏内提醒内容框文字随字体大小设置缩放
+ *  - 停止提醒按钮紧贴内容框；新增"已服用"按钮（点选→已完成，未点/自动停止→延误）
  *  - 背景主题可配：红色（默认）/ 蓝色，仅背景色不同
  */
 @Composable
@@ -56,7 +58,8 @@ fun AlarmScreen(
     repeatText: String,
     timeMillis: Long,
     alarmTheme: String = AlarmThemePrefs.THEME_RED,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onTaken: (() -> Unit)? = null
 ) {
     val isBlue = alarmTheme == AlarmThemePrefs.THEME_BLUE
     val bgTop = if (isBlue) AlarmBlue else AlarmRed
@@ -81,7 +84,7 @@ fun AlarmScreen(
                 .fillMaxSize()
                 .padding(horizontal = 24.dp, vertical = 28.dp)
         ) {
-            // 顶部：铃铛 + 两行标题
+            // 顶部：铃铛 + 单行大标题（固定最大字号，一次到位，不随字体大小设置调整）
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
@@ -101,24 +104,17 @@ fun AlarmScreen(
 
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    "到点了，",
-                    fontSize = 44.sp,
-                    lineHeight = 54.sp,
+                    "到点了，请注意！",
+                    fontSize = 48.sp,
+                    lineHeight = 58.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    "请注意！",
-                    fontSize = 44.sp,
-                    lineHeight = 54.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
                 )
             }
 
-            // 中部：提醒内容框 + 停止提醒按钮，紧贴排列（内容少时整体上移，不留大空隙）
+            // 中部：提醒内容框 + 已服用按钮 + 停止提醒按钮，紧贴排列（内容少时整体上移，不留大空隙）
             Spacer(Modifier.height(24.dp))
             Surface(
                 shape = RoundedCornerShape(24.dp),
@@ -129,7 +125,7 @@ fun AlarmScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             TimeFormats.time(timeMillis),
-                            fontSize = 34.sp,
+                            fontSize = elderSp(34f),
                             fontWeight = FontWeight.Bold,
                             color = accent
                         )
@@ -137,13 +133,32 @@ fun AlarmScreen(
                     Spacer(Modifier.height(18.dp))
                     Text(
                         title,
-                        fontSize = 30.sp,
-                        lineHeight = 40.sp,
+                        fontSize = elderSp(30f),
+                        lineHeight = elderSp(40f),
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    // 已服用按钮（服药类）：点选→已完成；未点/自动停止→延误
+                    if (onTaken != null) {
+                        Spacer(Modifier.height(20.dp))
+                        Surface(
+                            shape = RoundedCornerShape(30.dp),
+                            color = Color(0xFF12B76A),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onTaken
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.height(58.dp)) {
+                                Text(
+                                    "已服用",
+                                    fontSize = elderSp(22f),
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -159,14 +174,14 @@ fun AlarmScreen(
                 onClick = onStop
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("停止提醒", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("停止提醒", fontSize = elderSp(26f), fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
 
             Spacer(Modifier.height(14.dp))
             Text(
                 "如不点击，约 2 分钟后自动停止",
-                fontSize = 14.sp,
+                fontSize = elderSp(14f),
                 color = Color.White.copy(alpha = 0.8f),
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center

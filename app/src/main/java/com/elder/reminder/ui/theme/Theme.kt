@@ -40,6 +40,21 @@ val LocalFontScale = staticCompositionLocalOf { FontScaleState(1f) }
 /** 按全局缩放系数放大字号（老人视角）。 */
 fun Float.scaled(scale: Float): Float = this * scale
 
+/**
+ * 读取当前全局字体缩放系数（Composable 内使用）。
+ * 标准 1.0 / 大 1.15 / 特大 1.3。
+ */
+@Composable
+fun elderFontScale(): Float = LocalFontScale.current.scale
+
+/**
+ * 让硬编码 fontSize = X.sp 跟随全局字体缩放（老人视角适配）。
+ * 替换各处硬编码字号，使"字体大小"设置真正作用于文字本身。
+ * 大屏标题等固定字号请勿使用本函数（用原生 .sp）。
+ */
+@Composable
+fun elderSp(v: Float): TextUnit = (v * LocalFontScale.current.scale).sp
+
 private val ElderColors = lightColorScheme(
     primary = BluePrimary,
     onPrimary = Color.White,

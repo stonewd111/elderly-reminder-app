@@ -3,6 +3,7 @@ package com.elder.reminder
 import android.app.Application
 import com.elder.reminder.alarm.ReminderScheduler
 import com.elder.reminder.data.AlarmThemePrefs
+import com.elder.reminder.data.CategoryIconPrefs
 import com.elder.reminder.data.CommonCategoryPrefs
 import com.elder.reminder.data.FontPrefs
 import com.elder.reminder.data.ReminderRepository
@@ -17,6 +18,7 @@ class ReminderApp : Application() {
         FontPrefs.init(this)
         AlarmThemePrefs.init(this)
         CommonCategoryPrefs.init(this)
+        CategoryIconPrefs.init(this)
         ReminderScheduler.rescheduleAll(this)
         // 语音引擎改为懒加载：进入语音页时才加载 25MB 模型，
         // 避免启动阶段在后台线程 native 崩溃（SIGSEGV 会绕过 Java 崩溃捕获，

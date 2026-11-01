@@ -65,11 +65,28 @@ object VoiceSession {
                 _state.value = VoiceState(error = "语音识别未就绪")
                 return@launch
             }
-            recordLoop(session)
+            recordLoop(session, releaseOnStop = true)
         }
     }
 
-    private suspend fun recordLoop(session: SherpaSession) {
+    /**
+     * 按压说话模式：按住开始录音，抬起调用 [stopHold] 结束并提交结果。
+     * 与 [start] 的区别：recordLoop 在 running=false 时不自动 finish/提交，
+     * 而是由 stopHold 显式 finish，从而避免"停顿一下就被自动截断"。
+     */
+    fun startHold(context: Context) {
+        start(context)
+    }
+
+    /** 抬起结束：显式 finish 识别并提交结果（按压说话模式用）。 */
+    fun stopHold() {
+        if (!running) return
+        // 通知 recordLoop 停止读取，并让它 finish + 提交（复用 stop 语义）
+        running = false
+        // recordLoop 检测 running==false 后自行 finish 并提交 finalText
+    }
+
+    private suspend fun recordLoop(session: SherpaSession, releaseOnStop: Boolean = true) {
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT
         )
@@ -105,7 +122,9 @@ object VoiceSession {
                 if (text != _state.value.partial) {
                     _state.value = _state.value.copy(partial = text)
                 }
-                if (session.isEndpoint()) break
+                // 按压说话模式：不再因 endpoint（静音停顿）自动结束，
+                // 完全由用户抬起手指（stopHold/stop 置 running=false）来结束，
+                // 修复"语音输入总会自动停止、间隔太短"的问题。
             }
             session.finish()
             val text = session.text()

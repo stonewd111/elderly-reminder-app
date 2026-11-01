@@ -184,14 +184,23 @@ fun ElderApp() {
                         ReminderRepository.all().filter { it.done }.forEach { ReminderScheduler.cancel(context, it.id) }
                         ReminderRepository.removeAllDone()
                         Toast.makeText(context, "已删除全部完成提醒", Toast.LENGTH_SHORT).show()
+                    },
+                    // 点"已服用"：标记完成、取消后续调度（从"今天/延误"进入"已完成"）
+                    onMarkTaken = { r ->
+                        ReminderRepository.upsert(
+                            r.copy(done = true, delayed = false, triggered = false, enabled = false)
+                        )
+                        ReminderScheduler.cancel(context, r.id)
+                        Toast.makeText(context, "已标记为已服用", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
             composable(ROUTE_COMMON) {
                 CommonScreen(
-                    // 点小类 → 预填编辑页（标题 + 分类 + 药名），时间由用户在编辑页填写。
-                    // 服药类：标题固定"服药"，药名=小类；其他类：标题=小类。
-                    onAdd = { sub, category ->
+                    // 点小类 → 预填编辑页（标题 + 分类 + 次小类 + 药名），时间由用户在编辑页填写。
+                    // 服药类：标题固定"服药"，次小类=小类（如降压药），药名留给用户选填具体药名；
+                    //        其他类：标题=小类，次小类=小类。
+                    onAdd = { sub, category, subCategory, categoryLabel ->
                         val isMed = category == Reminder.Category.MEDICATION
                         prefillTemplate = Reminder(
                             id = -1L,
@@ -202,7 +211,9 @@ fun ElderApp() {
                             enabled = true,
                             done = false,
                             category = category,
-                            drug = if (isMed) sub else ""
+                            categoryLabel = categoryLabel,
+                            subCategory = subCategory,
+                            drug = "" // 药名由用户选填（服药类留空，用户填具体药名）
                         )
                         navController.navigate("editor?id=-1&text=")
                     },
