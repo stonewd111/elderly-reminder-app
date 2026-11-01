@@ -47,9 +47,14 @@ class AlarmActivity : ComponentActivity() {
                 setContent {
                     val level by com.elder.reminder.data.FontPrefs.level.collectAsState()
                     val theme by com.elder.reminder.data.AlarmThemePrefs.theme.collectAsState()
-                    // 服药类提醒：大屏显示"已服用"按钮（点选→已完成，未点/自动停止→延误）
+                    // 所有分类都显示完成按钮：文案按分类区分，便于记录"本次已完成"
                     val reminder = com.elder.reminder.data.ReminderRepository.find(reminderId)
-                    val isMed = reminder?.category == com.elder.reminder.model.Reminder.Category.MEDICATION
+                    val takenText = when (reminder?.category) {
+                        com.elder.reminder.model.Reminder.Category.MEDICATION -> "已服用"
+                        com.elder.reminder.model.Reminder.Category.HEALTH -> "已测量"
+                        com.elder.reminder.model.Reminder.Category.WATER -> "已喝水"
+                        else -> "已完成"
+                    }
                     com.elder.reminder.ui.theme.ElderTheme(scale = com.elder.reminder.data.FontPrefs.scaleOf(level)) {
                         AlarmScreen(
                             title = screenTitle,
@@ -58,12 +63,11 @@ class AlarmActivity : ComponentActivity() {
                             timeMillis = screenTime,
                             alarmTheme = theme,
                             onStop = { finishAlarm() },
-                            onTaken = if (isMed) {
-                                {
-                                    markTaken(reminderId)
-                                    finishAlarm()
-                                }
-                            } else null
+                            onTaken = {
+                                markTaken(reminderId)
+                                finishAlarm()
+                            },
+                            takenText = takenText
                         )
                     }
                 }

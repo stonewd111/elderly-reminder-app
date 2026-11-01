@@ -59,7 +59,8 @@ fun AlarmScreen(
     timeMillis: Long,
     alarmTheme: String = AlarmThemePrefs.THEME_RED,
     onStop: () -> Unit,
-    onTaken: (() -> Unit)? = null
+    onTaken: (() -> Unit)? = null,
+    takenText: String = "已完成"
 ) {
     val isBlue = alarmTheme == AlarmThemePrefs.THEME_BLUE
     val bgTop = if (isBlue) AlarmBlue else AlarmRed
@@ -140,7 +141,7 @@ fun AlarmScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    // 已服用按钮（服药类）：点选→已完成；未点/自动停止→延误
+                    // 完成按钮（所有分类）：点选→本次已完成；未点/自动停止→延误
                     if (onTaken != null) {
                         Spacer(Modifier.height(20.dp))
                         Surface(
@@ -151,7 +152,7 @@ fun AlarmScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.height(58.dp)) {
                                 Text(
-                                    "已服用",
+                                    takenText,
                                     fontSize = elderSp(22f),
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
