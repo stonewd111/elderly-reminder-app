@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elder.reminder.domain.LunarDate
@@ -409,7 +411,11 @@ fun ReminderListScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // 五个标签等宽固定排列：位置与字号不随字体大小变化，全部完整显示
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             val tabs = listOf(
                 "全部" to null,
                 "今天" to todayList.size,
@@ -422,14 +428,19 @@ fun ReminderListScreen(
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = if (selected) BluePrimary else Color.White,
-                    modifier = Modifier.clickable { filter = index }
+                    modifier = Modifier.weight(1f).height(36.dp).clickable { filter = index }
                 ) {
-                    Text(
-                        if (count != null) "$name-$count" else name,
-                        fontSize = elderSp(16f),
-                        color = if (selected) Color.White else TextSecondary,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            if (count != null) "$name-$count" else name,
+                            fontSize = 14.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selected) Color.White else TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }

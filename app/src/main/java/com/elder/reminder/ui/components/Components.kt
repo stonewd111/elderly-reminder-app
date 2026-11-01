@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -47,6 +48,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -190,52 +192,74 @@ fun ReminderCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-            // ===== 第一行：图标 | [编号]时间 | 分类 | 次小类 | 删除图标（字体固定） =====
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // ===== 第一行：整行高度与字号均固定，不随字体大小变化 =====
+            Row(
+                Modifier.fillMaxWidth().height(32.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 val icon = CategoryIconPrefs.iconOf(
                     categoryLabelOf(reminder),
                     reminder.category
                 )
                 Box(
-                    Modifier.size(34.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
+                    Modifier.size(28.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     CategoryIconView(
                         icon,
-                        emojiSize = 17.sp,
-                        imageSize = 28.dp,
+                        emojiSize = 15.sp,
+                        imageSize = 22.dp,
                         modifier = Modifier
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                // [编号] 时间（编号为首页今日序号，其余页不显示）
+                Spacer(Modifier.width(6.dp))
+                // [编号] 时间（固定字号，单行）
                 Text(
                     (if (index != null) "[$index] " else "") + TimeFormats.time(reminder.triggerAt),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip
                 )
-                Spacer(Modifier.width(8.dp))
-                // 分类名 → 次小类
-                Tag(categoryLabelOf(reminder), catColor)
-                if (reminder.subCategory.isNotBlank()) {
-                    Spacer(Modifier.width(6.dp))
-                    Tag(reminder.subCategory, catColor)
+                Spacer(Modifier.width(6.dp))
+                // 分类名 / 次小类：紧跟时间，占剩余宽度，固定字号，超长省略
+                Row(
+                    Modifier.weight(1f).clipToBounds(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FixedTag(categoryLabelOf(reminder), catColor)
+                    if (reminder.subCategory.isNotBlank()) {
+                        FixedTag(reminder.subCategory, catColor)
+                    }
                 }
-                Spacer(Modifier.weight(1f))
-                // 右上角：滑动按钮（全部提醒页）或首页编号占位
+                Spacer(Modifier.width(6.dp))
+                // 右侧固定列：滑动按钮（缩小到与时间同高）+ 红色垃圾桶，两者右侧固定对齐
                 if (trailing != null) {
-                    trailing()
-                    Spacer(Modifier.width(4.dp))
+                    Box(
+                        Modifier.width(40.dp).height(26.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.runtime.CompositionLocalProvider(
+                            androidx.compose.material3.LocalMinimumInteractiveComponentSize provides 0.dp
+                        ) {
+                            Box(Modifier.scale(0.72f)) { trailing() }
+                        }
+                    }
                 }
-                // 删除：红色垃圾桶图标
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Box(
+                    Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         Icons.Filled.Delete,
                         contentDescription = "删除",
                         tint = Color(0xFFE5362F),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -261,6 +285,24 @@ fun ReminderCard(
 fun categoryLabelOf(r: Reminder): String =
     if (r.category == Reminder.Category.OTHER && r.categoryLabel.isNotBlank()) r.categoryLabel
     else Reminder.Category.label(r.category)
+
+/** 固定字号标签（提醒卡片第一行专用）：不随字体大小缩放。 */
+@Composable
+private fun FixedTag(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = color.copy(alpha = 0.12f)
+    ) {
+        Text(
+            text,
+            fontSize = 13.sp,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
+}
 
 /** 内容显示：按（"药品"：提醒内容）格式；药品为空则仅内容。 */
 private fun displayText(r: Reminder): String {
