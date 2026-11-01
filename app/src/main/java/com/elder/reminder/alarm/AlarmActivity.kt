@@ -72,14 +72,21 @@ class AlarmActivity : ComponentActivity() {
         handler.postDelayed({ finishAlarm() }, ForegroundAlarmService.DURATION_MS)
     }
 
-    /** 点"已服用"：标记该提醒为已完成（done=true），并停止播报。 */
+    /** 点"已服用"：单次提醒永久完成；重复提醒只标记本次完成，保留下一次自动循环。 */
     private fun markTaken(id: Long) {
         if (id < 0) return
         val r = com.elder.reminder.data.ReminderRepository.find(id) ?: return
-        // 单次提醒已完成；重复提醒仅本次置已完成（下次触发重新开启）
-        val updated = r.copy(done = true, delayed = false, triggered = false, enabled = false)
-        com.elder.reminder.data.ReminderRepository.upsert(updated)
-        com.elder.reminder.alarm.ReminderScheduler.cancel(this, id)
+        if (r.repeat != com.elder.reminder.model.Reminder.Repeat.None) {
+            // 重复提醒：下一次闹钟已在响铃时排好，这里只记录"本次已完成"，绝不能取消下一次
+            com.elder.reminder.data.ReminderRepository.upsert(
+                r.copy(done = true, doneAt = System.currentTimeMillis(), delayed = false, triggered = false)
+            )
+        } else {
+            com.elder.reminder.data.ReminderRepository.upsert(
+                r.copy(done = true, doneAt = System.currentTimeMillis(), delayed = false, triggered = false, enabled = false)
+            )
+            com.elder.reminder.alarm.ReminderScheduler.cancel(this, id)
+        }
     }
 
     private fun finishAlarm() {

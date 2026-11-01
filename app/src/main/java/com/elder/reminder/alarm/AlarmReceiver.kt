@@ -23,12 +23,18 @@ class AlarmReceiver : BroadcastReceiver() {
         // 先标记"已触发"（本次响铃中/已响过），待用户处理：
         //  - 点"已服用"/停止 → 完成（markDone）
         //  - 无人工触发、2 分钟自动停止 → 延误（markDelayed）
-        // 重复提醒：调度下次（用下次时间副本给调度器，不写回仓库，保留本次状态供显示）
+        // 重复提醒：调度下次（用下次时间副本给调度器，不写回仓库，保留本次状态供显示）；
+        //          同时把上一轮的"本次已完成/延误"状态清掉，自动重新进入队列。
         if (reminder.repeat != Reminder.Repeat.None) {
             val next = ReminderScheduler.nextTrigger(reminder, System.currentTimeMillis() + 1000)
             if (next != null) {
                 ReminderScheduler.schedule(context, reminder.copy(triggerAt = next))
-                ReminderRepository.upsert(reminder.copy(triggered = true, enabled = true))
+                ReminderRepository.upsert(
+                    reminder.copy(
+                        triggered = true, enabled = true,
+                        done = false, doneAt = 0L, delayed = false
+                    )
+                )
             }
         } else {
             ReminderRepository.upsert(reminder.copy(triggered = true, enabled = false))

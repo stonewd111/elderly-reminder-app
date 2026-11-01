@@ -126,9 +126,12 @@ fun ElderApp() {
     }
 
     val scaleUp: (Reminder, Boolean) -> Unit = { r, on ->
-        // 关闭 → done=true（进"已完成"页）；开启 → done=false（回到对应时间页）。
-        // 用户诉求（问题3）：关闭后应在"已完成"里能看到；重新开启今日已关闭的提醒应回"今天"，而非"未来"。
-        val updated = r.copy(enabled = on, done = !on)
+        // 重复提醒：自动循环，关闭开关=暂停（可再打开恢复）；单次提醒：关闭=完成。
+        val updated = if (on) {
+            r.copy(enabled = true, done = false, doneAt = 0L)
+        } else {
+            r.copy(enabled = false, done = true, doneAt = System.currentTimeMillis())
+        }
         ReminderRepository.upsert(updated)
         if (on) ReminderScheduler.schedule(context, updated)
         else ReminderScheduler.cancel(context, r.id)
@@ -187,8 +190,13 @@ fun ElderApp() {
                         Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
                     },
                     onDeleteAllDone = {
-                        ReminderRepository.all().filter { it.done }.forEach { ReminderScheduler.cancel(context, it.id) }
-                        ReminderRepository.removeAllDone()
+                        // 只清理单次提醒的完成记录；重复提醒只是暂停/本次完成，不能被一键删除
+                        val targets = ReminderRepository.all()
+                            .filter { it.done && it.repeat == Reminder.Repeat.None }
+                        targets.forEach {
+                            ReminderScheduler.cancel(context, it.id)
+                            ReminderRepository.remove(it.id)
+                        }
                         Toast.makeText(context, "已删除全部完成提醒", Toast.LENGTH_SHORT).show()
                     }
                 )

@@ -27,6 +27,7 @@ import com.elder.reminder.R
 import com.elder.reminder.data.ReminderRepository
 import com.elder.reminder.data.SoundPrefs
 import com.elder.reminder.model.Reminder
+import com.elder.reminder.model.isDoneNow
 import java.util.Locale
 
 /**
@@ -422,9 +423,9 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     private fun markDelayedAll() {
         activeAlarms.forEach { id ->
             val r = ReminderRepository.find(id) ?: return@forEach
-            if (r.done) return@forEach // 已点"已服用"或已完成，不标记延误
+            if (r.isDoneNow()) return@forEach // 本次已完成，不标记延误
             ReminderRepository.upsert(
-                r.copy(delayed = true, triggered = false, done = false)
+                r.copy(delayed = true, triggered = false, done = false, doneAt = 0L)
             )
         }
     }

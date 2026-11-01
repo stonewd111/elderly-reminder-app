@@ -26,7 +26,9 @@ data class Reminder(
     /** 是否已触发（闹钟已到点响过），用于区分"今天/未来"与"延误" */
     val triggered: Boolean = false,
     /** 是否延误：闹钟触发后无人点击"已服用"、系统自动停止 2 分钟后置 true */
-    val delayed: Boolean = false
+    val delayed: Boolean = false,
+    /** 标记为完成的时间；重复提醒只认"完成当天"，用于次日自动回到队列 */
+    val doneAt: Long = 0L
 ) {
     enum class Mode { VOICE, BEEP }
 
@@ -79,6 +81,7 @@ data class Reminder(
         put("subCategory", subCategory)
         put("triggered", triggered)
         put("delayed", delayed)
+        put("doneAt", doneAt)
         put("repeat", repeatToJson(repeat))
     }
 
@@ -97,7 +100,8 @@ data class Reminder(
             drug = o.optString("drug", ""),
             subCategory = o.optString("subCategory", ""),
             triggered = o.optBoolean("triggered", false),
-            delayed = o.optBoolean("delayed", false)
+            delayed = o.optBoolean("delayed", false),
+            doneAt = o.optLong("doneAt", 0L)
         )
 
         private fun repeatToJson(r: Repeat): JSONObject = JSONObject().apply {
@@ -139,6 +143,21 @@ data class Reminder(
 
 /** 给界面展示的中文描述。 */
 fun Reminder.repeatText(): String = repeat.cnLabel()
+
+/**
+ * done 对当前时刻是否仍然有效：
+ *  - 单次提醒：完成即永久有效；
+ *  - 重复提醒：只认完成当天，次日自动失效并回到队列（无需人工恢复）。
+ */
+fun Reminder.isDoneNow(now: Long = System.currentTimeMillis()): Boolean {
+    if (!done) return false
+    if (repeat == Reminder.Repeat.None) return true
+    if (doneAt <= 0L) return true
+    val a = java.util.Calendar.getInstance().apply { timeInMillis = now }
+    val b = java.util.Calendar.getInstance().apply { timeInMillis = doneAt }
+    return a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) &&
+        a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
+}
 
 fun Reminder.Repeat.cnLabel(): String = when (this) {
     Reminder.Repeat.None -> "不重复"

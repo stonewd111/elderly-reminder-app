@@ -16,7 +16,8 @@ object ReminderScheduler {
 
     fun schedule(context: Context, reminder: Reminder) {
         cancel(context, reminder.id)
-        if (!reminder.enabled || reminder.done) return
+        // 重复提醒的 done 只代表"本次已完成"，不影响下一次排期；单次提醒完成即不再排
+        if (!reminder.enabled || (reminder.done && reminder.repeat == Reminder.Repeat.None)) return
         val fireAt = nextTrigger(reminder, System.currentTimeMillis()) ?: return
 
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -43,7 +44,8 @@ object ReminderScheduler {
     }
 
     fun rescheduleAll(context: Context) {
-        ReminderRepositoryHolder.repo().filter { it.enabled && !it.done }
+        // 只跳过被人工暂停（enabled=false）的提醒；重复提醒即使本次已完成也要继续排下一次
+        ReminderRepositoryHolder.repo().filter { it.enabled }
             .forEach { schedule(context, it) }
     }
 
