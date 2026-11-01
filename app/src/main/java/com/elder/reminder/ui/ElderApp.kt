@@ -174,6 +174,10 @@ fun ElderApp() {
                         listInitialTab = 1 // 首页"今日"→全部提醒"今天"tab
                         navController.navigate(ROUTE_LIST)
                     },
+                    onOpenDelayed = {
+                        listInitialTab = 2 // 首页漏报提示→全部提醒"延误"tab
+                        navController.navigate(ROUTE_LIST)
+                    },
                     onSettings = { showSettings = true }
                 )
             }
@@ -386,7 +390,10 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                 SettingRow("🎤 麦克风权限") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
                 }
-                SettingRow("📂 后台运行（OPPO 需允许自启动+后台无限制）") {
+                SettingRow("🚀 自启动 + 后台无限制（OPPO 必开）") {
+                    com.elder.reminder.alarm.LockscreenGuide.openAutoStartSetting(context)
+                }
+                SettingRow("📂 应用详情（权限 / 电池 / 最近任务锁定）") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
                 }
 

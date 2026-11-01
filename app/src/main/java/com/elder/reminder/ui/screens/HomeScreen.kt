@@ -71,9 +71,11 @@ fun HomeScreen(
     onVoice: () -> Unit,
     onEdit: (Reminder) -> Unit,
     onOpenList: () -> Unit,
+    onOpenDelayed: () -> Unit,
     onSettings: () -> Unit
 ) {
     val todayReminders = remember(items) { upcomingToday(items) }
+    val missedCount = remember(items) { items.count { it.delayed && !it.isDoneNow() } }
     val dateTitle = remember { SimpleDateFormat("M月d日", Locale.CHINA).format(Date()) }
     val lunar = remember { LunarDate.text() }
     val weekday = remember { weekdayCn(System.currentTimeMillis()) }
@@ -210,6 +212,30 @@ fun HomeScreen(
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState())
         ) {
+            // 漏报提示：有延误未处理的提醒时置顶提醒，点击直达"延误"页
+            if (missedCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFFFF1E8),
+                    modifier = Modifier.fillMaxWidth().clickable { onOpenDelayed() }
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "有 $missedCount 条提醒可能错过，请查看延误",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFD9480F),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("查看 >", fontSize = 15.sp, color = Color(0xFFD9480F), fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
             // 第一行：今日提醒 + 数量；右侧"今日"进全部提醒的"今天"界面，字体固定不随缩放
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Row(

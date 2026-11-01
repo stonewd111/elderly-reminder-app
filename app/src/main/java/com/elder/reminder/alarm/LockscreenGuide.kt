@@ -129,4 +129,33 @@ object LockscreenGuide {
             ); true
         }.getOrDefault(false)
     }
+
+    /**
+     * 跳转 OPPO/ColorOS「自启动」管理页（允许自启动 + 后台无限制）。
+     * 各版本组件名不同，逐个尝试；全部失败则回退到应用详情页。
+     */
+    fun openAutoStartSetting(context: Context): Boolean {
+        val candidates = listOf(
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
+            ComponentName("com.oplus.safecenter", "com.oplus.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.oplus.safecenter", "com.oplus.safecenter.startupapp.StartupAppListActivity")
+        )
+        for (cn in candidates) {
+            val intent = Intent().apply {
+                component = cn
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (intent.resolveActivity(context.packageManager) != null) {
+                runCatching { context.startActivity(intent); return true }
+            }
+        }
+        return runCatching {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:${context.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ); true
+        }.getOrDefault(false)
+    }
 }
