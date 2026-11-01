@@ -238,13 +238,14 @@ fun ReminderCard(
                 // 右侧固定列：滑动按钮（缩小到与时间同高）+ 红色垃圾桶，两者右侧固定对齐
                 if (trailing != null) {
                     Box(
-                        Modifier.width(40.dp).height(26.dp),
+                        Modifier.width(34.dp).height(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         androidx.compose.runtime.CompositionLocalProvider(
                             androidx.compose.material3.LocalMinimumInteractiveComponentSize provides 0.dp
                         ) {
-                            Box(Modifier.scale(0.72f)) { trailing() }
+                            // 0.58 倍：约 30×19dp，高度与红色垃圾桶图标一致
+                            Box(Modifier.scale(0.58f)) { trailing() }
                         }
                     }
                 }
