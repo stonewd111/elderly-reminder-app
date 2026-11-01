@@ -286,20 +286,21 @@ fun categoryLabelOf(r: Reminder): String =
     if (r.category == Reminder.Category.OTHER && r.categoryLabel.isNotBlank()) r.categoryLabel
     else Reminder.Category.label(r.category)
 
-/** 固定字号标签（提醒卡片第一行专用）：不随字体大小缩放。 */
+/** 固定字号标签（提醒卡片第一行专用）：不随字体大小缩放，高度紧贴文字。 */
 @Composable
 private fun FixedTag(text: String, color: Color) {
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(6.dp),
         color = color.copy(alpha = 0.12f)
     ) {
         Text(
             text,
             fontSize = 13.sp,
+            lineHeight = 15.sp,
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
         )
     }
 }

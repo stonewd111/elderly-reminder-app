@@ -195,14 +195,14 @@ fun ElderApp() {
             }
             composable(ROUTE_COMMON) {
                 CommonScreen(
-                    // 点小类 → 预填编辑页（标题 + 分类 + 次小类 + 药名），时间由用户在编辑页填写。
+                    // 点小类 → 预填编辑页（分类 + 次小类 + 药名预填），提醒内容留空由用户填写。
                     // 服药类：标题固定"服药"，次小类=小类（如降压药），药名留给用户选填具体药名；
-                    //        其他类：标题=小类，次小类=小类。
+                    //        其他类：标题留空，不自动填次小类。
                     onAdd = { sub, category, subCategory, categoryLabel ->
                         val isMed = category == Reminder.Category.MEDICATION
                         prefillTemplate = Reminder(
                             id = -1L,
-                            title = if (isMed) "服药" else sub,
+                            title = if (isMed) "服药" else "",
                             triggerAt = System.currentTimeMillis() + 60 * 60 * 1000L, // 默认 1 小时后，用户可改
                             mode = Reminder.Mode.VOICE,
                             repeat = Reminder.Repeat.None,
