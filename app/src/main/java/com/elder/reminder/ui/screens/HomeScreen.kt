@@ -330,7 +330,7 @@ private fun upcomingToday(items: List<Reminder>): List<Reminder> {
     val tomorrowStart = todayStart + 24 * 60 * 60 * 1000L
     val now = System.currentTimeMillis()
     return items.filter { r ->
-        if (!r.enabled || r.isDoneNow()) return@filter false
+        if (!r.enabled || r.isDoneNow() || r.delayed) return@filter false
         val day = effectiveDay(r, now, todayStart)
         day in todayStart until tomorrowStart
     }.sortedBy { nextFireAt(it, now) ?: it.triggerAt }
@@ -369,7 +369,12 @@ fun ReminderListScreen(
     val todayList = remember(items) { upcomingToday(items) }
     val delayedList = remember(items) { items.filter { it.delayed && !it.isDoneNow() } }
     val futureList = remember(items) { upcomingFuture(items) }
-    val doneList = remember(items) { items.filter { it.isDoneNow() || !it.enabled } }
+    val doneList = remember(items) {
+        items.filter {
+            it.isDoneNow() ||
+                (it.repeat != Reminder.Repeat.None && !it.enabled) // 暂停中的重复提醒也留在此页
+        }
+    }
 
     val shown = remember(items, filter) {
         when (filter) {

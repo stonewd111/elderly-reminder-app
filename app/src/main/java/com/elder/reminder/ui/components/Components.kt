@@ -236,6 +236,20 @@ fun ReminderCard(
                     }
                 }
                 Spacer(Modifier.width(6.dp))
+                // 重复提醒：固定尺寸的循环标识，位于滑动按钮左侧
+                if (reminder.repeat != Reminder.Repeat.None) {
+                    Box(
+                        Modifier.width(22.dp).height(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Loop,
+                            contentDescription = "重复提醒",
+                            tint = Color(0xFFF79009),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
                 // 右侧固定列：滑动按钮（缩小到与时间同高）+ 红色垃圾桶，两者右侧固定对齐
                 if (trailing != null) {
                     Box(
@@ -248,20 +262,6 @@ fun ReminderCard(
                             // 0.58 倍：约 30×19dp，高度与红色垃圾桶图标一致
                             Box(Modifier.scale(0.58f)) { trailing() }
                         }
-                    }
-                }
-                // 重复提醒：固定尺寸的循环标识，紧靠删除图标左侧
-                if (reminder.repeat != Reminder.Repeat.None) {
-                    Box(
-                        Modifier.width(22.dp).height(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Loop,
-                            contentDescription = "重复提醒",
-                            tint = Color(0xFFF79009),
-                            modifier = Modifier.size(17.dp)
-                        )
                     }
                 }
                 Box(
