@@ -77,6 +77,12 @@ fun HomeScreen(
     val dateTitle = remember { SimpleDateFormat("M月d日", Locale.CHINA).format(Date()) }
     val lunar = remember { LunarDate.text() }
     val weekday = remember { weekdayCn(System.currentTimeMillis()) }
+    val context = LocalContext.current
+    val versionName = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: ""
+    }
 
     Column(
         Modifier
@@ -88,7 +94,16 @@ fun HomeScreen(
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("嘟嘟点卯", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = BlueDeep)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text("嘟嘟点卯", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = BlueDeep)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "v${versionName}",
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
                 Text("让生活更有规律", fontSize = 16.sp, color = TextSecondary)
             }
             IconButton(onClick = onSettings) {
@@ -302,15 +317,21 @@ private fun dayStart(t: Long): Long {
  * 应留在"今天"（未关闭）或"已完成"（关闭后）。故按此把今天已过的提醒归入"今天"。
  */
 private fun hasFiredToday(r: Reminder, now: Long): Boolean {
+    val todayStart = dayStart(now)
     val base = Calendar.getInstance().apply { timeInMillis = r.triggerAt }
-    val today = Calendar.getInstance().apply {
+    val todayAtBase = Calendar.getInstance().apply {
         timeInMillis = now
         set(Calendar.HOUR_OF_DAY, base.get(Calendar.HOUR_OF_DAY))
         set(Calendar.MINUTE, base.get(Calendar.MINUTE))
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    return when (r.repeat) {
+        // 单次：只有原定时间就在今天、且已过，才算"今天已到点"（明天的计划不会算进今天）
+        Reminder.Repeat.None -> dayStart(r.triggerAt) == todayStart && r.triggerAt <= now
+        // 重复：今天该时点已过，且提醒在此前就已存在（今天新建、时点已过的提醒归明天）
+        else -> todayAtBase <= now && r.createdAt <= todayAtBase
     }
-    return today.timeInMillis <= now
 }
 
 /**
@@ -322,6 +343,12 @@ private fun effectiveDay(r: Reminder, now: Long, todayStart: Long): Long {
     if (hasFiredToday(r, now)) return todayStart
     val next = nextFireAt(r, now)
     return if (next != null) dayStart(next) else dayStart(r.triggerAt)
+}
+
+/** 按时间先后排序：单次与重复统一用"下一次实际触发时间"，已完成的按完成时间。 */
+private fun sortedByTime(list: List<Reminder>): List<Reminder> {
+    val now = System.currentTimeMillis()
+    return list.sortedBy { nextFireAt(it, now) ?: it.triggerAt }
 }
 
 /** 今日提醒：未完成、已启用，且归属日落在今天（含今天已触发过的提醒）。 */
@@ -342,7 +369,7 @@ private fun upcomingFuture(items: List<Reminder>): List<Reminder> {
     val tomorrowStart = todayStart + 24 * 60 * 60 * 1000L
     val now = System.currentTimeMillis()
     return items.filter { r ->
-        if (!r.enabled || r.isDoneNow()) return@filter false
+        if (!r.enabled || r.isDoneNow() || r.delayed) return@filter false
         effectiveDay(r, now, todayStart) >= tomorrowStart
     }.sortedBy { nextFireAt(it, now) ?: it.triggerAt }
 }
@@ -367,13 +394,13 @@ fun ReminderListScreen(
     var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
 
     val todayList = remember(items) { upcomingToday(items) }
-    val delayedList = remember(items) { items.filter { it.delayed && !it.isDoneNow() } }
+    val delayedList = remember(items) { sortedByTime(items.filter { it.delayed && !it.isDoneNow() }) }
     val futureList = remember(items) { upcomingFuture(items) }
     val doneList = remember(items) {
         items.filter {
             it.isDoneNow() ||
                 (it.repeat != Reminder.Repeat.None && !it.enabled) // 暂停中的重复提醒也留在此页
-        }
+        }.sortedBy { if (it.doneAt > 0L) it.doneAt else it.triggerAt }
     }
 
     val shown = remember(items, filter) {
@@ -382,7 +409,7 @@ fun ReminderListScreen(
             2 -> delayedList
             3 -> futureList
             4 -> doneList
-            else -> items
+            else -> sortedByTime(items)
         }
     }
 
@@ -466,9 +493,10 @@ fun ReminderListScreen(
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                shown.forEach { r ->
+                shown.forEachIndexed { idx, r ->
                     ReminderCard(
                         r,
+                        index = idx + 1,
                         onClick = { onEdit(r) },
                         onDelete = { confirmDelete = r },
                         trailing = {

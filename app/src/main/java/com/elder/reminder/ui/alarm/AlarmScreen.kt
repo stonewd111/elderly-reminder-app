@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -104,15 +105,20 @@ fun AlarmScreen(
                 }
 
                 Spacer(Modifier.height(14.dp))
-                Text(
-                    "到点了，请注意！",
-                    fontSize = 48.sp,
-                    lineHeight = 58.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
+                // "到点了，请注意！"8 个字：按屏宽自适应字号，保证单行完整显示、不被裁切
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val titleSp = (maxWidth.value / 8.6f).coerceIn(20f, 48f)
+                    Text(
+                        "到点了，请注意！",
+                        fontSize = titleSp.sp,
+                        lineHeight = (titleSp * 1.2f).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
             // 中部：提醒内容框 + 已服用按钮 + 停止提醒按钮，紧贴排列（内容少时整体上移，不留大空隙）
