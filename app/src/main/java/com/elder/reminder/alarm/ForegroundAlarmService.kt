@@ -114,6 +114,9 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                 modeText = intent.getStringExtra(EXTRA_MODE) ?: "VOICE"
                 repeatText = intent.getStringExtra(EXTRA_REPEAT) ?: ""
                 val time = intent.getLongExtra(EXTRA_TIME, System.currentTimeMillis())
+                // 本条提醒独立铃声（空=跟随全局）；自定义铃声用本条 URI
+                val soundTypeExtra = intent.getStringExtra(EXTRA_SOUND) ?: ""
+                val soundUriExtra = intent.getStringExtra(EXTRA_SOUND_URI) ?: ""
                 // 加入活跃集合；若首次启动则初始化播报
                 val first = activeAlarms.isEmpty()
                 if (id >= 0) {
@@ -129,7 +132,7 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                     // 应用在前台时立即弹红色全屏页；后台交给 fullScreenIntent 兜底
                     tryStartAlarmActivity(intent)
                     // 播放放后台线程，避免同步 prepare() 阻塞主线程导致 5 秒超时崩溃
-                    Thread { playByPrefs() }.start()
+                    Thread { playByPrefs(soundTypeExtra, soundUriExtra) }.start()
                     handler.postDelayed(stopRunnable, DURATION_MS)
                 } else {
                     // 已有提醒在播，仅为新提醒补发全屏通知 + 尝试弹页
@@ -142,12 +145,19 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         return START_NOT_STICKY
     }
 
-    /** 按 SoundPrefs 全局音效设置播报：system / male / female / custom。失败逐级降级。 */
-    private fun playByPrefs() {
+    /**
+     * 按本条提醒铃声播报；soundType 为空时跟随全局默认设置。
+     * 注：同一时刻多条提醒并存时，以"第一条触发"的铃声为准（服务共用单个播放器）。
+     */
+    private fun playByPrefs(soundType: String, soundUri: String) {
         if (stopped) return
-        val type = SoundPrefs.effectiveType()
+        // 仅振动：不发声（振动已在 start 时启动）
+        if (soundType == SOUND_VIBRATE) return
+        val type = if (soundType.isBlank()) SoundPrefs.effectiveType() else soundType
         val ok = when (type) {
-            SoundPrefs.TYPE_CUSTOM -> startCustomLoop()
+            SoundPrefs.TYPE_CUSTOM -> startCustomLoop(
+                soundUri.ifBlank { SoundPrefs.customPath.value }
+            )
             SoundPrefs.TYPE_MALE -> startResourceLoop(R.raw.alarm_voice_male)
             SoundPrefs.TYPE_FEMALE -> startResourceLoop(R.raw.alarm_voice)
             else -> startPlayerLoop()
@@ -184,8 +194,8 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     }
 
     /** 循环播放自定义 MP3（content URI，已持久化读权限）。成功返回 true；失败返回 false。 */
-    private fun startCustomLoop(): Boolean {
-        val path = SoundPrefs.customPath.value
+    private fun startCustomLoop(uriStr: String): Boolean {
+        val path = uriStr
         if (path.isBlank()) return false
         return runCatching {
             player = MediaPlayer().apply {
@@ -448,11 +458,18 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
         const val EXTRA_MODE = "alarm_mode"
         const val EXTRA_REPEAT = "alarm_repeat"
         const val EXTRA_TIME = "alarm_time"
+        const val EXTRA_SOUND = "alarm_sound"
+        const val EXTRA_SOUND_URI = "alarm_sound_uri"
+        /** 仅振动、不发声 */
+        const val SOUND_VIBRATE = "vibrate"
         const val NOTIF_ID = 0xE1D3
         const val DURATION_MS = 120_000L
 
         /** 启动前台播报服务（保证锁屏/后台也有声音）。 */
-        fun start(context: Context, id: Long, title: String, mode: String, repeat: String, time: Long) {
+        fun start(
+            context: Context, id: Long, title: String, mode: String, repeat: String, time: Long,
+            soundType: String = "", soundUri: String = ""
+        ) {
             val intent = Intent(context, ForegroundAlarmService::class.java).apply {
                 action = ACTION_START
                 putExtra(AlarmReceiver.EXTRA_ID, id)
@@ -460,6 +477,8 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                 putExtra(EXTRA_MODE, mode)
                 putExtra(EXTRA_REPEAT, repeat)
                 putExtra(EXTRA_TIME, time)
+                putExtra(EXTRA_SOUND, soundType)
+                putExtra(EXTRA_SOUND_URI, soundUri)
             }
             ContextCompat.startForegroundService(context, intent)
         }

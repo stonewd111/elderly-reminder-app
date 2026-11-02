@@ -2,6 +2,11 @@ package com.elder.reminder.ui.screens
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,7 +22,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.elder.reminder.alarm.ReminderScheduler
 import com.elder.reminder.data.ReminderRepository
+import com.elder.reminder.data.SoundPrefs
 import com.elder.reminder.domain.TimeFormats
 import com.elder.reminder.domain.TimeParser
 import com.elder.reminder.model.Reminder
@@ -86,11 +95,32 @@ fun EditorScreen(
     var drug by remember(initKey) { mutableStateOf(initial?.drug ?: "") }
     var subCategory by remember(initKey) { mutableStateOf(initial?.subCategory ?: "") }
     var repeat by remember(initKey) { mutableStateOf<Reminder.Repeat>(initial?.repeat ?: Reminder.Repeat.None) }
+    // 本条提醒独立铃声（空=跟随全局默认）
+    var soundType by remember(initKey) { mutableStateOf(initial?.soundType ?: "") }
+    var soundUri by remember(initKey) { mutableStateOf(initial?.soundUri ?: "") }
+    var soundName by remember(initKey) { mutableStateOf(initial?.soundName ?: "") }
+    var showSoundPicker by remember { mutableStateOf(false) }
     var step by remember { mutableIntStateOf(1) }
     var showDelete by remember { mutableStateOf(false) }
     // 分类选择弹窗：1 选大类 → 2 选次小类（pickingCategory 存大类 label，区分自定义大类）
     var showCategoryPicker by remember { mutableStateOf(false) }
     var pickingCategory by remember { mutableStateOf<String?>(null) }
+
+    // 自定义铃声选择：OpenDocument 保证可持久化读权限，后台播报时也能读取
+    val soundFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            soundUri = uri.toString()
+            soundName = soundDisplayName(context, uri)
+            soundType = SoundPrefs.TYPE_CUSTOM
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+        }
+    }
 
     fun save() {
         // 提醒内容 与 药品名称 2 选 1 填写即可通过（用户要求）
@@ -112,7 +142,10 @@ fun EditorScreen(
             category = category,
             categoryLabel = categoryLabel,
             drug = d,
-            subCategory = subCategory.trim()
+            subCategory = subCategory.trim(),
+            soundType = soundType,
+            soundUri = soundUri,
+            soundName = soundName
         )
         ReminderRepository.upsert(reminder)
         ReminderScheduler.schedule(context, reminder)
@@ -190,8 +223,55 @@ fun EditorScreen(
                 }
 
                 Spacer(Modifier.height(12.dp))
+                // 铃声 + 重复合并为一张卡片：第1步少占一张卡片的间距，
+                // 尽量保证特大字体下"删除这条提醒"仍无需大幅滚动即可见。
                 Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    InfoRow("重复", repeatTextOf(repeat), onClick = { step = 2 })
+                    Column {
+                        // 提醒铃声：逐条提醒独立选择（跟随全局 / 系统闹铃 / 男声 / 女声 / 仅振动 / 自定义）
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { showSoundPicker = true }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "🔔 铃声",
+                                fontSize = elderSp(18f),
+                                color = TextSecondary,
+                                maxLines = 1,
+                                modifier = Modifier.width(90.dp)
+                            )
+                            Text(
+                                soundLabel(soundType, soundName),
+                                fontSize = elderSp(19f),
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
+                        }
+                        // 重复（点击进入设置周期）
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable { step = 2 }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "重复",
+                                fontSize = elderSp(18f),
+                                color = TextSecondary,
+                                maxLines = 1,
+                                modifier = Modifier.width(90.dp)
+                            )
+                            Text(
+                                repeatTextOf(repeat),
+                                fontSize = elderSp(19f),
+                                color = TextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(22.dp))
@@ -266,6 +346,50 @@ fun EditorScreen(
                 }) { Text("删除", color = Color(0xFFE5362F)) }
             },
             dismissButton = { TextButton(onClick = { showDelete = false }) { Text("取消") } }
+        )
+    }
+
+    // 铃声选择弹窗：逐条提醒独立设置（含"仅振动"与自定义 MP3）
+    if (showSoundPicker) {
+        val options = listOf(
+            "" to soundLabel("", ""),
+            SoundPrefs.TYPE_SYSTEM to "🔔 系统闹铃",
+            SoundPrefs.TYPE_MALE to "👨 男声（到点了，请注意！）",
+            SoundPrefs.TYPE_FEMALE to "👩 女声（到点了，请注意！）",
+            "vibrate" to "📳 仅振动（不发声）",
+            SoundPrefs.TYPE_CUSTOM to "🎵 自定义 MP3" +
+                if (soundName.isNotBlank()) "（$soundName）" else "（选择文件）"
+        )
+        AlertDialog(
+            onDismissRequest = { showSoundPicker = false },
+            title = { Text("选择提醒铃声") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    options.forEach { (type, label) ->
+                        val selected = soundType == type
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (selected) Color(0xFFEAF1FF) else Color(0xFFF7F8FA),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                if (type == SoundPrefs.TYPE_CUSTOM) {
+                                    // 自定义：打开系统文件选择器（可重复选择以更换文件）
+                                    showSoundPicker = false
+                                    soundFileLauncher.launch(arrayOf("audio/mpeg", "audio/mp3", "audio/*"))
+                                } else {
+                                    soundType = type
+                                    showSoundPicker = false
+                                }
+                            }
+                        ) {
+                            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(label, fontSize = elderSp(17f), color = TextPrimary, modifier = Modifier.weight(1f))
+                                if (selected) Text("✓", fontSize = elderSp(18f), color = BluePrimary)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSoundPicker = false }) { Text("取消") } }
         )
     }
 
@@ -544,4 +668,34 @@ private fun NumberStepper(label: String, value: Int, range: IntRange, onChange: 
             TextButton(onClick = { if (value < range.last) onChange(value + 1) }) { Text("＋", fontSize = elderSp(22f)) }
         }
     }
+}
+
+/** 全局默认铃声的中文名（用于"跟随全局"的说明）。 */
+private fun globalSoundLabel(): String = when (SoundPrefs.effectiveType()) {
+    SoundPrefs.TYPE_MALE -> "男声"
+    SoundPrefs.TYPE_FEMALE -> "女声"
+    SoundPrefs.TYPE_CUSTOM -> "自定义"
+    else -> "系统闹铃"
+}
+
+/** 本条提醒铃声的显示文案。 */
+private fun soundLabel(type: String, name: String): String = when (type) {
+    "" -> "跟随全局（${globalSoundLabel()}）"
+    SoundPrefs.TYPE_SYSTEM -> "🔔 系统闹铃"
+    SoundPrefs.TYPE_MALE -> "👨 男声"
+    SoundPrefs.TYPE_FEMALE -> "👩 女声"
+    "vibrate" -> "📳 仅振动（不发声）"
+    SoundPrefs.TYPE_CUSTOM -> "🎵 自定义" + if (name.isNotBlank()) "（$name）" else "（未选择）"
+    else -> "跟随全局（${globalSoundLabel()}）"
+}
+
+/** 从 content URI 取文件名，取不到则回退末段。 */
+private fun soundDisplayName(context: Context, uri: Uri): String {
+    val queried = runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+        }
+    }.getOrNull()
+    return queried?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment ?: "自定义铃声"
 }

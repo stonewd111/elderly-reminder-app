@@ -465,10 +465,10 @@ private fun SoundSettingSection(context: Context) {
         Toast.makeText(context, "已设置提醒音效：$name", Toast.LENGTH_SHORT).show()
     }
 
-    Text("🔊 提醒音效", fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color(0xFF101828))
+    Text("🔊 默认铃声", fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = Color(0xFF101828))
     Spacer(Modifier.height(4.dp))
     Text(
-        "到点提醒时统一使用这里的音效（系统闹铃 / 男声 / 女声 / 自定义）",
+        "这里是默认铃声：提醒未单独设置铃声时使用。单条提醒可在编辑页“🔔 铃声”里单独选择。",
         fontSize = 13.sp, color = Color(0xFF667085)
     )
     Spacer(Modifier.height(8.dp))

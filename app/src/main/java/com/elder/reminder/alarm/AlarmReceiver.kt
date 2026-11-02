@@ -45,7 +45,8 @@ class AlarmReceiver : BroadcastReceiver() {
         runCatching {
             ForegroundAlarmService.start(
                 context, id, reminder.title, reminder.mode.name,
-                reminder.repeatText(), reminder.triggerAt
+                reminder.repeatText(), reminder.triggerAt,
+                reminder.soundType, reminder.soundUri
             )
         }
     }

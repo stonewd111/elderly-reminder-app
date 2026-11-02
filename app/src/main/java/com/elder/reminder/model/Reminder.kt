@@ -28,7 +28,16 @@ data class Reminder(
     /** 是否延误：闹钟触发后无人点击"已服用"、系统自动停止 2 分钟后置 true */
     val delayed: Boolean = false,
     /** 标记为完成的时间；重复提醒只认"完成当天"，用于次日自动回到队列 */
-    val doneAt: Long = 0L
+    val doneAt: Long = 0L,
+    /**
+     * 本条提醒的铃声：空串=跟随全局默认铃声；可选 system/male/female/custom/vibrate。
+     * 逐条提醒独立设置，避免所有提醒只能共用一种声音。
+     */
+    val soundType: String = "",
+    /** 自定义铃声的 content URI（soundType==custom 时有效，需已持久化读授权） */
+    val soundUri: String = "",
+    /** 自定义铃声显示名（仅用于界面展示） */
+    val soundName: String = ""
 ) {
     enum class Mode { VOICE, BEEP }
 
@@ -82,6 +91,9 @@ data class Reminder(
         put("triggered", triggered)
         put("delayed", delayed)
         put("doneAt", doneAt)
+        put("soundType", soundType)
+        put("soundUri", soundUri)
+        put("soundName", soundName)
         put("repeat", repeatToJson(repeat))
     }
 
@@ -101,7 +113,10 @@ data class Reminder(
             subCategory = o.optString("subCategory", ""),
             triggered = o.optBoolean("triggered", false),
             delayed = o.optBoolean("delayed", false),
-            doneAt = o.optLong("doneAt", 0L)
+            doneAt = o.optLong("doneAt", 0L),
+            soundType = o.optString("soundType", ""),
+            soundUri = o.optString("soundUri", ""),
+            soundName = o.optString("soundName", "")
         )
 
         private fun repeatToJson(r: Repeat): JSONObject = JSONObject().apply {
