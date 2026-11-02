@@ -214,10 +214,10 @@ fun ReminderCard(
                     )
                 }
                 Spacer(Modifier.width(6.dp))
-                // [编号] 时间（固定字号，单行）
+                // [编号] 时间（固定字号，单行；用户要求适当增大提醒时间字体，其他不变）
                 Text(
                     (if (index != null) "[$index] " else "") + TimeFormats.time(reminder.triggerAt),
-                    fontSize = 16.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
                     maxLines = 1,

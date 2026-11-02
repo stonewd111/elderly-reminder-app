@@ -3,6 +3,7 @@ package com.elder.reminder.ui.screens
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -75,8 +76,10 @@ fun EditorScreen(
 
     // 用 id 作为 key，切换不同提醒时状态正确重置（避免上一提醒内容残留）
     val initKey = existingId ?: -1L
-    var title by remember(initKey, spokenText) { mutableStateOf(initial?.title ?: parsed?.title ?: "") }
-    var triggerAt by remember(initKey, spokenText) { mutableStateOf(initial?.triggerAt ?: parsed?.triggerAt ?: defaultAt) }
+    // 语音修改/录入修复：spokenText 非空时，语音解析结果优先覆盖旧提醒内容与时间，
+    // 否则用户看到的是旧内容、语音修改不生效。无语音时用旧提醒内容。
+    var title by remember(initKey, spokenText) { mutableStateOf(parsed?.title ?: initial?.title ?: "") }
+    var triggerAt by remember(initKey, spokenText) { mutableStateOf(parsed?.triggerAt ?: initial?.triggerAt ?: defaultAt) }
     var mode by remember(initKey) { mutableStateOf(initial?.mode ?: Reminder.Mode.VOICE) }
     var category by remember(initKey) { mutableStateOf(initial?.category ?: Reminder.Category.OTHER) }
     var categoryLabel by remember(initKey) { mutableStateOf(initial?.categoryLabel ?: "") }
@@ -124,9 +127,9 @@ fun EditorScreen(
         )
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).weight(1f)
-                .verticalScroll(rememberScrollState())
         ) {
             if (step == 1) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                 // 语音录入卡片（手动输入已按用户要求删除——直接输入提醒内容即可）
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ModeCard("🎙", "语音录入", "说出提醒内容", true, Modifier.weight(1f)) { onVoiceEdit(existingId) }
@@ -201,33 +204,39 @@ fun EditorScreen(
                     SecondaryButton("删除这条提醒", onClick = { showDelete = true })
                 }
                 Spacer(Modifier.height(24.dp))
+                } // 结束 step1 滚动 Column
             } else {
-                RepeatOptions(repeat) { repeat = it }
+                // 设置周期页：内容区可滚动，按钮固定在底部（特大字体下"保存/上一步"也不落屏外）
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState())
+                ) {
+                    RepeatOptions(repeat) { repeat = it }
 
-                Spacer(Modifier.height(18.dp))
-                Text("提醒时间", fontSize = elderSp(18f), fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(Modifier.height(8.dp))
-                Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        InfoRow("日期", TimeFormats.dayLabel(triggerAt) + "（" + com.elder.reminder.domain.dateCn(triggerAt) + "）") {
-                            val c = Calendar.getInstance().apply { timeInMillis = triggerAt }
-                            DatePickerDialog(context, { _, y, m, d ->
-                                val nc = Calendar.getInstance().apply { timeInMillis = triggerAt }
-                                nc.set(y, m, d); triggerAt = nc.timeInMillis
-                            }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
-                        }
-                        InfoRow("时间", TimeFormats.time(triggerAt)) {
-                            val c = Calendar.getInstance().apply { timeInMillis = triggerAt }
-                            TimePickerDialog(context, { _, h, min ->
-                                val nc = Calendar.getInstance().apply { timeInMillis = triggerAt }
-                                nc.set(Calendar.HOUR_OF_DAY, h); nc.set(Calendar.MINUTE, min)
-                                nc.set(Calendar.SECOND, 0); triggerAt = nc.timeInMillis
-                            }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
+                    Spacer(Modifier.height(18.dp))
+                    Text("提醒时间", fontSize = elderSp(18f), fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Spacer(Modifier.height(8.dp))
+                    Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            InfoRow("日期", TimeFormats.dayLabel(triggerAt) + "（" + com.elder.reminder.domain.dateCn(triggerAt) + "）") {
+                                val c = Calendar.getInstance().apply { timeInMillis = triggerAt }
+                                DatePickerDialog(context, { _, y, m, d ->
+                                    val nc = Calendar.getInstance().apply { timeInMillis = triggerAt }
+                                    nc.set(y, m, d); triggerAt = nc.timeInMillis
+                                }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+                            }
+                            InfoRow("时间", TimeFormats.time(triggerAt)) {
+                                val c = Calendar.getInstance().apply { timeInMillis = triggerAt }
+                                TimePickerDialog(context, { _, h, min ->
+                                    val nc = Calendar.getInstance().apply { timeInMillis = triggerAt }
+                                    nc.set(Calendar.HOUR_OF_DAY, h); nc.set(Calendar.MINUTE, min)
+                                    nc.set(Calendar.SECOND, 0); triggerAt = nc.timeInMillis
+                                }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
+                            }
                         }
                     }
+                    Spacer(Modifier.height(24.dp))
                 }
-
-                Spacer(Modifier.height(22.dp))
+                // 底部固定按钮（不随内容滚动，特大字体也始终可见）
                 PrimaryButton("保存", onClick = { save() })
                 Spacer(Modifier.height(10.dp))
                 SecondaryButton("上一步", onClick = { step = 1 })
@@ -419,31 +428,49 @@ private fun RepeatOptions(current: Reminder.Repeat, onChange: (Reminder.Repeat) 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RepeatRow("不重复", current is Reminder.Repeat.None) { onChange(Reminder.Repeat.None) }
         RepeatRow("每天", current is Reminder.Repeat.Daily) { onChange(Reminder.Repeat.Daily) }
-        RepeatRow("每周", current is Reminder.Repeat.Weekly) { onChange(Reminder.Repeat.Weekly(setOf(1))) }
-        RepeatRow("每月", current is Reminder.Repeat.Monthly) {
-            onChange(Reminder.Repeat.Monthly(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)))
+        // 每周、每月同一排（用户要求）
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            RepeatRow("每周", current is Reminder.Repeat.Weekly, Modifier.weight(1f)) {
+                onChange(Reminder.Repeat.Weekly(setOf(1, 2, 3, 4, 5))) // 默认周一~周五
+            }
+            RepeatRow("每月", current is Reminder.Repeat.Monthly, Modifier.weight(1f)) {
+                onChange(Reminder.Repeat.Monthly(15)) // 默认 15 号
+            }
         }
-        RepeatRow("自定义间隔", current is Reminder.Repeat.Interval) { onChange(Reminder.Repeat.Interval(3)) }
+        RepeatRow("自定义间隔", current is Reminder.Repeat.Interval) { onChange(Reminder.Repeat.Interval(7)) } // 默认 7 天
 
+        // 选择行：点击"每周/每月/自定义间隔"时，下方选择行用红色粗线框住（做提醒）
         when (val r = current) {
-            is Reminder.Repeat.Weekly -> WeekdayPicker(r.days) { onChange(Reminder.Repeat.Weekly(it)) }
-            is Reminder.Repeat.Monthly -> NumberStepper("每月几号", r.day, 1..31) { onChange(Reminder.Repeat.Monthly(it)) }
-            is Reminder.Repeat.Interval -> NumberStepper("每隔几天", r.days, 1..365) { onChange(Reminder.Repeat.Interval(it)) }
+            is Reminder.Repeat.Weekly -> HighlightedBox { WeekdayPicker(r.days) { onChange(Reminder.Repeat.Weekly(it)) } }
+            is Reminder.Repeat.Monthly -> HighlightedBox { NumberStepper("每月几号", r.day, 1..31) { onChange(Reminder.Repeat.Monthly(it)) } }
+            is Reminder.Repeat.Interval -> HighlightedBox { NumberStepper("每隔几天", r.days, 1..365) { onChange(Reminder.Repeat.Interval(it)) } }
             else -> Unit
         }
     }
 }
 
+/** 红色粗线框容器：包住"每周/每月/自定义间隔"下方的选择行，做醒目标识。 */
 @Composable
-private fun RepeatRow(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun HighlightedBox(content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .border(2.dp, Color(0xFFE5362F), RoundedCornerShape(14.dp))
+            .padding(6.dp)
+    ) { content() }
+}
+
+@Composable
+private fun RepeatRow(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = Color.White,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = modifier.clickable(onClick = onClick)
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(vertical = 12.dp, horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (selected) "◉" else "○", fontSize = elderSp(20f), color = if (selected) BluePrimary else TextSecondary)
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
             Text(text, fontSize = elderSp(18f), color = TextPrimary, modifier = Modifier.weight(1f))
         }
     }

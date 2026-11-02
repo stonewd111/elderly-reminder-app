@@ -262,9 +262,10 @@ fun ElderApp() {
                     onRetry = { navController.popBackStack() },
                     // 修复语音录入跳步 BUG：确认后进入编辑页设置周期，而非直接保存。
                     onSaved = {
-                        // 携带语音文本跳转到编辑页，由用户确认周期后保存
+                        // 携带语音文本跳转到编辑页，由用户确认周期后保存。
+                        // popUpTo 到 editor 路由并移除旧 editor/voice/confirm，避免返回时看到旧的编辑页。
                         navController.navigate("editor?id=$id&text=${Uri.encode(text)}") {
-                            popUpTo("voice?id={id}") { inclusive = true }
+                            popUpTo("editor?id={id}&text={text}") { inclusive = true }
                         }
                     }
                 )
