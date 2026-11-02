@@ -6,8 +6,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -179,6 +181,7 @@ private fun categoryAccent(category: String): Color = when (category) {
  *  第二行（内容居中，字体随缩放）：药品名+提醒内容
  *  "已服用"按钮已移除（与右上角滑动按钮功能重复，用户要求去掉）。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ReminderCard(
     reminder: Reminder,
@@ -186,6 +189,7 @@ fun ReminderCard(
     onDelete: () -> Unit,
     index: Int? = null,
     showDate: Boolean = false,
+    onLongPress: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
     val accent = when (reminder.id % 3L) {
@@ -206,7 +210,10 @@ fun ReminderCard(
         shape = RoundedCornerShape(18.dp),
         color = Color.White,
         shadowElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongPress
+        )
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
             // ===== 第一行：整行高度与字号均固定，不随字体大小变化 =====

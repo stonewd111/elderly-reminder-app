@@ -73,12 +73,14 @@ fun HomeScreen(
     onVoice: () -> Unit,
     onEdit: (Reminder) -> Unit,
     onDelete: (Reminder) -> Unit,
+    onMarkDone: (Reminder) -> Unit,
     onOpenList: () -> Unit,
     onOpenDelayed: () -> Unit,
     onSettings: () -> Unit
 ) {
     val todayReminders = remember(items) { upcomingToday(items) }
     var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
+    var markDoneTarget by remember { mutableStateOf<Reminder?>(null) }
     val missedCount = remember(items) { items.count { it.delayed && !it.isDoneNow() } }
     val dateTitle = remember { SimpleDateFormat("M月d日", Locale.CHINA).format(Date()) }
     val lunar = remember { LunarDate.text() }
@@ -298,7 +300,11 @@ fun HomeScreen(
                             reminder = r,
                             onClick = { onEdit(r) },
                             onDelete = { confirmDelete = r },
-                            index = idx + 1
+                            index = idx + 1,
+                            // 长按重复提醒：手动补记"今天已完成"（用于完成记录丢失时补录）
+                            onLongPress = if (r.repeat != Reminder.Repeat.None) {
+                                { markDoneTarget = r }
+                            } else null
                         )
                     }
                 }
@@ -332,6 +338,26 @@ fun HomeScreen(
             },
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { confirmDelete = null }) { Text("取消") }
+            }
+        )
+    }
+
+    // 长按补记完成确认弹窗（仅重复提醒）
+    if (markDoneTarget != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { markDoneTarget = null },
+            title = { Text("标记为今天已完成") },
+            text = {
+                Text("把“${markDoneTarget!!.title}”记为今天已完成？它会进入“已完成”，明天照常提醒。")
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    onMarkDone(markDoneTarget!!)
+                    markDoneTarget = null
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { markDoneTarget = null }) { Text("取消") }
             }
         )
     }
@@ -431,11 +457,13 @@ fun ReminderListScreen(
     onEdit: (Reminder) -> Unit,
     onToggle: (Reminder, Boolean) -> Unit,
     onDelete: (Reminder) -> Unit,
+    onMarkDone: (Reminder) -> Unit,
     onDeleteAllDone: () -> Unit,
     initialTab: Int = 0 // 0全部 1今天 2延误 3未来 4已完成
 ) {
     var filter by remember { mutableStateOf(initialTab) } // 0全部 1今天 2延误 3未来 4已完成
     var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
+    var markDoneTarget by remember { mutableStateOf<Reminder?>(null) }
 
     val todayList = remember(items) { upcomingToday(items) }
     val delayedList = remember(items) { sortedByTime(items.filter { it.delayed && !it.isDoneNow() }) }
@@ -545,6 +573,10 @@ fun ReminderListScreen(
                         showDate = filter == 0 || filter == 3,
                         onClick = { onEdit(r) },
                         onDelete = { confirmDelete = r },
+                        // 长按重复提醒：手动补记"今天已完成"（用于完成记录丢失时补录）
+                        onLongPress = if (r.repeat != Reminder.Repeat.None) {
+                            { markDoneTarget = r }
+                        } else null,
                         trailing = {
                             androidx.compose.material3.Switch(
                                 // 绿=已启用/循环中（今天已完成也保持绿色）；灰=已关闭，不再响
@@ -584,6 +616,24 @@ fun ReminderListScreen(
                 }) { Text("删除", color = Color(0xFFE5362F)) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("取消") } }
+        )
+    }
+
+    // 长按补记完成确认弹窗（仅重复提醒）
+    if (markDoneTarget != null) {
+        AlertDialog(
+            onDismissRequest = { markDoneTarget = null },
+            title = { Text("标记为今天已完成") },
+            text = {
+                Text("把“${markDoneTarget!!.title}”记为今天已完成？它会进入“已完成”，明天照常提醒。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onMarkDone(markDoneTarget!!)
+                    markDoneTarget = null
+                }) { Text("确定") }
+            },
+            dismissButton = { TextButton(onClick = { markDoneTarget = null }) { Text("取消") } }
         )
     }
 }

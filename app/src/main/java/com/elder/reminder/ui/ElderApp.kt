@@ -143,6 +143,33 @@ fun ElderApp() {
         else ReminderScheduler.cancel(context, r.id)
     }
 
+    // 长按手动补记"今天已完成"（仅用于重复提醒，补录丢失的完成记录）。
+    // 跳过今天这一次：把下一次触发点算到明天/下次，避免补记后今天又响。
+    val markDoneToday: (Reminder) -> Unit = { r ->
+        val now = System.currentTimeMillis()
+        val base = java.util.Calendar.getInstance().apply { timeInMillis = r.triggerAt }
+        val todayAt = java.util.Calendar.getInstance().apply {
+            timeInMillis = now
+            set(java.util.Calendar.HOUR_OF_DAY, base.get(java.util.Calendar.HOUR_OF_DAY))
+            set(java.util.Calendar.MINUTE, base.get(java.util.Calendar.MINUTE))
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val next = ReminderScheduler.nextTrigger(r, maxOf(now, todayAt) + 1000L)
+        val updated = r.copy(
+            done = true,
+            doneAt = now,
+            delayed = false,
+            triggered = false,
+            enabled = true,
+            triggerAt = next ?: r.triggerAt
+        )
+        ReminderRepository.upsert(updated)
+        if (next != null) ReminderScheduler.schedule(context, updated)
+        else ReminderScheduler.cancel(context, r.id)
+        Toast.makeText(context, "已标记为今天完成", Toast.LENGTH_SHORT).show()
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
@@ -181,6 +208,7 @@ fun ElderApp() {
                         ReminderRepository.remove(r.id)
                         Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
                     },
+                    onMarkDone = markDoneToday,
                     onOpenList = {
                         listInitialTab = 1 // 首页"今日"→全部提醒"今天"tab
                         navController.navigate(ROUTE_LIST)
@@ -199,6 +227,7 @@ fun ElderApp() {
                     onAdd = { navController.navigate("editor?id=-1") },
                     onEdit = { navController.navigate("editor?id=${it.id}") },
                     onToggle = scaleUp,
+                    onMarkDone = markDoneToday,
                     onDelete = { r ->
                         ReminderScheduler.cancel(context, r.id)
                         ReminderRepository.remove(r.id)
