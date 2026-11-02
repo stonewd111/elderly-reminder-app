@@ -47,7 +47,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -178,6 +182,7 @@ fun ReminderCard(
     onClick: () -> Unit,
     onDelete: () -> Unit,
     index: Int? = null,
+    showDate: Boolean = false,
     trailing: @Composable (() -> Unit)? = null
 ) {
     val accent = when (reminder.id % 3L) {
@@ -186,6 +191,14 @@ fun ReminderCard(
         else -> PurpleTag
     }
     val catColor = categoryAccent(reminder.category)
+    // 兼顾日期与重复提醒：显示"下一次实际触发时间"的日期 + 时:分。
+    // 重复提醒用 nextTrigger 算出真正的下次触发日（如下周一、下月15），单次用 triggerAt。
+    val displayTimeMs = if (reminder.repeat != Reminder.Repeat.None) {
+        com.elder.reminder.alarm.ReminderScheduler.nextTrigger(reminder, System.currentTimeMillis())
+            ?: reminder.triggerAt
+    } else {
+        reminder.triggerAt
+    }
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = Color.White,
@@ -214,9 +227,21 @@ fun ReminderCard(
                     )
                 }
                 Spacer(Modifier.width(6.dp))
+                // 日期（仅"未来/全部"显示）：淡蓝色小字，位于时间左侧，辨识度高但不带预警感
+                if (showDate) {
+                    Text(
+                        TimeFormats.dateBrief(displayTimeMs),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF4A7DBD), // 辨识度高的纯蓝，非红色预警
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip
+                    )
+                    Spacer(Modifier.width(5.dp))
+                }
                 // [编号] 时间（固定字号，单行；用户要求适当增大提醒时间字体，其他不变）
                 Text(
-                    (if (index != null) "[$index] " else "") + TimeFormats.time(reminder.triggerAt),
+                    (if (index != null) "[$index] " else "") + TimeFormats.time(displayTimeMs),
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
@@ -230,10 +255,13 @@ fun ReminderCard(
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FixedTag(categoryLabelOf(reminder), catColor)
-                    if (reminder.subCategory.isNotBlank()) {
-                        FixedTag(reminder.subCategory, catColor)
-                    }
+                    // 只显示一个分类标签：优先显示次小类（如"测血压"、"降糖药"），
+                    // 次小类为空时兜底显示大类（如"服药"、"测血压血糖"），避免标签为空。
+                    FixedTag(
+                        if (reminder.subCategory.isNotBlank()) reminder.subCategory
+                        else categoryLabelOf(reminder),
+                        catColor
+                    )
                 }
                 Spacer(Modifier.width(6.dp))
                 // 重复提醒：固定尺寸的循环标识，位于滑动按钮左侧
@@ -282,13 +310,38 @@ fun ReminderCard(
 
             Spacer(Modifier.height(6.dp))
             // ===== 第二行：内容（药品名+提醒内容），字体随缩放，居中 =====
-            val display = displayText(reminder)
-            if (display.isNotBlank()) {
+            // 药品名用黑色粗体标记，其余（提醒内容）保持正常颜色。
+            val d = reminder.drug.trim()
+            val t = reminder.title.trim()
+            if (d.isNotBlank() || t.isNotBlank()) {
+                val annotated = buildAnnotatedString {
+                    if (d.isNotBlank()) {
+                        withStyle(
+                            SpanStyle(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                        ) { append(d) }
+                    }
+                    if (d.isNotBlank() && t.isNotBlank()) append("：")
+                    append(t)
+                }
                 Text(
-                    display,
+                    annotated,
                     fontSize = elderSp(18f),
                     color = TextPrimary,
                     maxLines = 2,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            // 重复提醒：内容下方补一行规律文案（每周一至五 · 每月15日），便于区分日期与重复。
+            if (reminder.repeat != Reminder.Repeat.None) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    reminder.repeatText(),
+                    fontSize = elderSp(14f),
+                    color = Color(0xFF4A7DBD),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -318,17 +371,6 @@ private fun FixedTag(text: String, color: Color) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
         )
-    }
-}
-
-/** 内容显示：按（"药品"：提醒内容）格式；药品为空则仅内容。 */
-private fun displayText(r: Reminder): String {
-    val t = r.title.trim()
-    val d = r.drug.trim()
-    return when {
-        d.isNotBlank() && t.isNotBlank() -> "$d：$t"
-        d.isNotBlank() -> d
-        else -> t
     }
 }
 

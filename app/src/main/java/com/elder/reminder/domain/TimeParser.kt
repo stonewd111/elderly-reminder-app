@@ -240,4 +240,37 @@ object TimeFormats {
     }
 
     fun full(millis: Long): String = "${dateCn(millis)} ${weekdayCn(millis)} ${timeCn(millis)}"
+
+    /**
+     * 提醒卡片用的日期短语（兼顾日期与重复提醒）：
+     *  - 今天 / 明天 / 后天：直接显示
+     *  - 3~6 天内：显示"周X"
+     *  - 7 天以上：显示"M月d日"，若跨年则带年份"yyyy年M月d日"
+     */
+    fun dateBrief(millis: Long): String {
+        val now = Calendar.getInstance()
+        val target = Calendar.getInstance().apply { timeInMillis = millis }
+        val todayStart = (now.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val dayStart = (target.clone() as Calendar).apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val diffDays = ((dayStart - todayStart) / (24 * 60 * 60 * 1000L)).toInt()
+        return when {
+            diffDays == 0 -> "今天"
+            diffDays == 1 -> "明天"
+            diffDays == 2 -> "后天"
+            diffDays in 3..6 -> weekdayCn(millis)
+            else -> {
+                val m = target.get(Calendar.MONTH) + 1
+                val d = target.get(Calendar.DAY_OF_MONTH)
+                val y = target.get(Calendar.YEAR)
+                val curY = now.get(Calendar.YEAR)
+                if (y != curY) "${y}年${m}月${d}日" else "${m}月${d}日"
+            }
+        }
+    }
 }

@@ -541,6 +541,8 @@ fun ReminderListScreen(
                     ReminderCard(
                         r,
                         index = idx + 1,
+                        // 日期仅在"全部 / 未来"tab 显示（用户要求：未来没有日期会混淆；今天/延误/已完成不需要）
+                        showDate = filter == 0 || filter == 3,
                         onClick = { onEdit(r) },
                         onDelete = { confirmDelete = r },
                         trailing = {
@@ -727,6 +729,7 @@ fun CommonScreen(
                                 )
                             }
                             Spacer(Modifier.width(12.dp))
+                            // 大类名称：保持原有自适应字号（用户确认目前合适，不再改动）
                             Text(
                                 g.label,
                                 fontSize = elderSp(20f),
@@ -734,20 +737,7 @@ fun CommonScreen(
                                 color = TextPrimary,
                                 modifier = Modifier.weight(1f)
                             )
-                            if (!deleteMode) {
-                                // 所有大类（含内建服药/测血压血糖）都可添加次小类
-                                Text(
-                                    "＋ 次小类",
-                                    fontSize = elderSp(14f),
-                                    color = BluePrimary,
-                                    modifier = Modifier
-                                        .clickable {
-                                            addSubItemCategory = g.label
-                                            showAddSubItem = true
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                                )
-                            } else {
+                            if (deleteMode) {
                                 // 删除模式：大类右侧红色"-"（固定类不可删，仅自定义类可删）
                                 if (!g.isBuiltin) {
                                     DeleteMinusButton {
@@ -776,7 +766,9 @@ fun CommonScreen(
                                             sub,
                                             fontSize = elderSp(17f),
                                             color = TextPrimary,
-                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                            // 灰色框左右 padding 从 16dp 收窄到 8dp，为文字腾出更多横向空间，
+                                            // 配合字号，字体（大）下也能完整显示 9 个汉字而不溢出。
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
                                         )
                                     }
                                     if (deleteMode && sub in g.removableSubs) {
