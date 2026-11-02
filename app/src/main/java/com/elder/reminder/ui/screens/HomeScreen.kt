@@ -547,7 +547,8 @@ fun ReminderListScreen(
                         onDelete = { confirmDelete = r },
                         trailing = {
                             androidx.compose.material3.Switch(
-                                checked = r.enabled && !r.isDoneNow(),
+                                // 绿=已启用/循环中（今天已完成也保持绿色）；灰=已关闭，不再响
+                                checked = r.enabled,
                                 onCheckedChange = { onToggle(r, it) }
                             )
                         }

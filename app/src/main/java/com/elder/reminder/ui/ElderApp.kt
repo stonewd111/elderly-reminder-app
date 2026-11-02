@@ -126,11 +126,17 @@ fun ElderApp() {
     }
 
     val scaleUp: (Reminder, Boolean) -> Unit = { r, on ->
-        // 重复提醒：自动循环，关闭开关=暂停（可再打开恢复）；单次提醒：关闭=完成。
+        // 开关语义：绿=启用/循环中，灰=已关闭。
+        // 打开=启用并清掉本轮完成标记。
+        // 关闭分两种：
+        //  - 单次提醒：一次性事项，关闭=终止，记完成并进"已完成"（可被一键删除清理）
+        //  - 重复提醒：关闭=暂停循环，不记完成（仍留在已完成页灰色，可重新开启）
         val updated = if (on) {
             r.copy(enabled = true, done = false, doneAt = 0L)
-        } else {
+        } else if (r.repeat == Reminder.Repeat.None) {
             r.copy(enabled = false, done = true, doneAt = System.currentTimeMillis())
+        } else {
+            r.copy(enabled = false, done = false, doneAt = 0L)
         }
         ReminderRepository.upsert(updated)
         if (on) ReminderScheduler.schedule(context, updated)
