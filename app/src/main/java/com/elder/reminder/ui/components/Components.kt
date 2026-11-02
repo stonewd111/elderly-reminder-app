@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -70,6 +72,7 @@ import com.elder.reminder.ui.theme.OrangeTag
 import com.elder.reminder.ui.theme.PurpleTag
 import com.elder.reminder.ui.theme.TextPrimary
 import com.elder.reminder.ui.theme.TextSecondary
+import com.elder.reminder.ui.theme.elderFontScale
 import com.elder.reminder.ui.theme.elderSp
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -227,19 +230,8 @@ fun ReminderCard(
                     )
                 }
                 Spacer(Modifier.width(6.dp))
-                // 日期（仅"未来/全部"显示）：淡蓝色小字，位于时间左侧，辨识度高但不带预警感
-                if (showDate) {
-                    Text(
-                        TimeFormats.dateBrief(displayTimeMs),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF4A7DBD), // 辨识度高的纯蓝，非红色预警
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip
-                    )
-                    Spacer(Modifier.width(5.dp))
-                }
                 // [编号] 时间（固定字号，单行；用户要求适当增大提醒时间字体，其他不变）
+                // 注：日期不放第一行，避免挤占次小类标签（次小类需完整显示），日期改到内容行前缀。
                 Text(
                     (if (index != null) "[$index] " else "") + TimeFormats.time(displayTimeMs),
                     fontSize = 19.sp,
@@ -309,12 +301,19 @@ fun ReminderCard(
             }
 
             Spacer(Modifier.height(6.dp))
-            // ===== 第二行：内容（药品名+提醒内容），字体随缩放，居中 =====
-            // 药品名用黑色粗体标记，其余（提醒内容）保持正常颜色。
+            // ===== 第二行：内容 =====
+            // 格式：日期(仅未来/全部) + 药品名(黑色粗体) + "：" + 提醒内容
+            // 日期放这里而非第一行，避免挤占次小类标签；此行为独立内容行，空间充足。
             val d = reminder.drug.trim()
             val t = reminder.title.trim()
-            if (d.isNotBlank() || t.isNotBlank()) {
+            if (showDate || d.isNotBlank() || t.isNotBlank()) {
                 val annotated = buildAnnotatedString {
+                    if (showDate) {
+                        withStyle(
+                            SpanStyle(color = Color(0xFF4A7DBD)) // 淡蓝日期，辨识度高、无预警感
+                        ) { append(TimeFormats.dateBrief(displayTimeMs)) }
+                        append(" ")
+                    }
                     if (d.isNotBlank()) {
                         withStyle(
                             SpanStyle(
@@ -335,16 +334,32 @@ fun ReminderCard(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            // 重复提醒：内容下方补一行规律文案（每周一至五 · 每月15日），便于区分日期与重复。
+            // 重复提醒：内容下方补一行规律文案（每周 周一/三/五），便于区分日期与重复。
             if (reminder.repeat != Reminder.Repeat.None) {
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    reminder.repeatText(),
-                    fontSize = elderSp(14f),
-                    color = Color(0xFF4A7DBD),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                val label = reminder.repeatText()
+                // 自适应字号：按可用宽度与字符宽度反算，保证无论字体多大都单行不跨行。
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val totalScale = elderFontScale() * LocalDensity.current.fontScale
+                    val availDp = maxWidth.value - 8f
+                    // 汉字≈1em，"/"和空格较窄按 0.45em 估算
+                    val emUnits = label.fold(0f) { acc, c ->
+                        acc + if (c == '/' || c == ' ') 0.45f else 1f
+                    }
+                    val maxSp = 14f * elderFontScale()
+                    val fitSp = if (emUnits > 0 && totalScale > 0) {
+                        availDp / (emUnits * totalScale)
+                    } else maxSp
+                    Text(
+                        label,
+                        fontSize = fitSp.coerceAtMost(maxSp).sp,
+                        color = Color(0xFF4A7DBD),
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }

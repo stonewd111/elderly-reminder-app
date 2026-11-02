@@ -162,9 +162,27 @@ fun Reminder.isDoneNow(now: Long = System.currentTimeMillis()): Boolean {
 fun Reminder.Repeat.cnLabel(): String = when (this) {
     Reminder.Repeat.None -> "不重复"
     Reminder.Repeat.Daily -> "每天"
-    is Reminder.Repeat.Weekly -> "每周 " + days.sorted().joinToString("、") { weekdayName(it) }
+    is Reminder.Repeat.Weekly -> {
+        // 紧凑写法：首个星期用全称，后续用单字，如"每周 周一/三/五"，避免过长跨行
+        val sorted = days.sorted()
+        if (sorted.isEmpty()) "每周"
+        else "每周 " + sorted.mapIndexed { i, d ->
+            if (i == 0) weekdayName(d) else weekdayShortName(d)
+        }.joinToString("/")
+    }
     is Reminder.Repeat.Monthly -> "每月 $day 日"
     is Reminder.Repeat.Interval -> "每隔 $days 天"
+}
+
+/** 星期简称：1→一 … 7→日，用于"每周 周一/三/五"紧凑写法。 */
+fun weekdayShortName(day: Int): String = when (day) {
+    1 -> "一"
+    2 -> "二"
+    3 -> "三"
+    4 -> "四"
+    5 -> "五"
+    6 -> "六"
+    else -> "日"
 }
 
 fun weekdayName(day: Int): String = when (day) {
