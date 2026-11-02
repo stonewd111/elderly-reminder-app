@@ -70,11 +70,13 @@ fun HomeScreen(
     recording: Boolean,
     onVoice: () -> Unit,
     onEdit: (Reminder) -> Unit,
+    onDelete: (Reminder) -> Unit,
     onOpenList: () -> Unit,
     onOpenDelayed: () -> Unit,
     onSettings: () -> Unit
 ) {
     val todayReminders = remember(items) { upcomingToday(items) }
+    var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
     val missedCount = remember(items) { items.count { it.delayed && !it.isDoneNow() } }
     val dateTitle = remember { SimpleDateFormat("M月d日", Locale.CHINA).format(Date()) }
     val lunar = remember { LunarDate.text() }
@@ -289,7 +291,7 @@ fun HomeScreen(
                         ReminderCard(
                             reminder = r,
                             onClick = { onEdit(r) },
-                            onDelete = { onEdit(r) },
+                            onDelete = { confirmDelete = r },
                             index = idx + 1
                         )
                     }
@@ -316,6 +318,24 @@ fun HomeScreen(
             )
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    // 首页删除确认弹窗：与"全部提醒"页一致的删除交互，点删除先确认再删。
+    if (confirmDelete != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("删除提醒") },
+            text = { Text("确定删除“${confirmDelete!!.title}”吗？") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    onDelete(confirmDelete!!)
+                    confirmDelete = null
+                }) { Text("删除", color = Color(0xFFE5362F)) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = null }) { Text("取消") }
+            }
+        )
     }
 }
 

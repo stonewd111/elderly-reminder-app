@@ -430,7 +430,12 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null) {
+/**
+ * 通用信息行。
+ * @param fixedValue true 时 value 用固定 19sp 且单行（不随字体缩放、不换行）。
+ *        用于"日期/时间"这类长文本：保证特大字体设置下一行完整显示、不被换行遮挡。
+ */
+fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null, fixedValue: Boolean = false) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -438,8 +443,23 @@ fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null) {
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = elderSp(18f), color = TextSecondary, modifier = Modifier.width(90.dp))
-        Text(value, fontSize = elderSp(19f), color = TextPrimary, modifier = Modifier.weight(1f))
+        // label 宽度收窄到 64dp：值区域更宽、更贴近字段名称；单行不换行，特大字体下也不撑高
+        Text(
+            label,
+            fontSize = elderSp(18f),
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.width(64.dp)
+        )
+        Text(
+            value,
+            fontSize = if (fixedValue) 19.sp else elderSp(19f),
+            color = TextPrimary,
+            maxLines = if (fixedValue) 1 else Int.MAX_VALUE,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.weight(1f)
+        )
         if (onClick != null) {
             Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextSecondary)
         }

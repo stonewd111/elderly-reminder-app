@@ -191,7 +191,7 @@ fun EditorScreen(
 
                 Spacer(Modifier.height(12.dp))
                 Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    InfoRow("重复", repeatTextOf(repeat)) { step = 2 }
+                    InfoRow("重复", repeatTextOf(repeat), onClick = { step = 2 })
                 }
 
                 Spacer(Modifier.height(22.dp))
@@ -217,21 +217,23 @@ fun EditorScreen(
                     Spacer(Modifier.height(8.dp))
                     Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            InfoRow("日期", TimeFormats.dayLabel(triggerAt) + "（" + com.elder.reminder.domain.dateCn(triggerAt) + "）") {
+                            // 日期/时间：value 用固定 19sp 且单行（fixedValue），
+                            // 特大字体设置下日期也一行完整显示、不换行遮挡时间。
+                            InfoRow("日期", TimeFormats.dayLabel(triggerAt) + "（" + com.elder.reminder.domain.dateCn(triggerAt) + "）", fixedValue = true, onClick = {
                                 val c = Calendar.getInstance().apply { timeInMillis = triggerAt }
                                 DatePickerDialog(context, { _, y, m, d ->
                                     val nc = Calendar.getInstance().apply { timeInMillis = triggerAt }
                                     nc.set(y, m, d); triggerAt = nc.timeInMillis
                                 }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
-                            }
-                            InfoRow("时间", TimeFormats.time(triggerAt)) {
+                            })
+                            InfoRow("时间", TimeFormats.time(triggerAt), fixedValue = true, onClick = {
                                 val c = Calendar.getInstance().apply { timeInMillis = triggerAt }
                                 TimePickerDialog(context, { _, h, min ->
                                     val nc = Calendar.getInstance().apply { timeInMillis = triggerAt }
                                     nc.set(Calendar.HOUR_OF_DAY, h); nc.set(Calendar.MINUTE, min)
                                     nc.set(Calendar.SECOND, 0); triggerAt = nc.timeInMillis
                                 }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
-                            }
+                            })
                         }
                     }
                     Spacer(Modifier.height(24.dp))

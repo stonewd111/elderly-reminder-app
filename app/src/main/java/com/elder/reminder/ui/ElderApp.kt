@@ -170,6 +170,11 @@ fun ElderApp() {
                     recording = voice.active,
                     onVoice = { startVoice(null) },
                     onEdit = { navController.navigate("editor?id=${it.id}") },
+                    onDelete = { r ->
+                        ReminderScheduler.cancel(context, r.id)
+                        ReminderRepository.remove(r.id)
+                        Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show()
+                    },
                     onOpenList = {
                         listInitialTab = 1 // 首页"今日"→全部提醒"今天"tab
                         navController.navigate(ROUTE_LIST)
@@ -263,9 +268,10 @@ fun ElderApp() {
                     // 修复语音录入跳步 BUG：确认后进入编辑页设置周期，而非直接保存。
                     onSaved = {
                         // 携带语音文本跳转到编辑页，由用户确认周期后保存。
-                        // popUpTo 到 editor 路由并移除旧 editor/voice/confirm，避免返回时看到旧的编辑页。
+                        // popUpTo ROUTE_HOME 并弹出语音/确认/编辑整条流程，避免返回时残留旧页
+                        // 造成"保存后回到确认页→再点下一步→又保存"的无限循环重复建提醒。
                         navController.navigate("editor?id=$id&text=${Uri.encode(text)}") {
-                            popUpTo("editor?id={id}&text={text}") { inclusive = true }
+                            popUpTo(ROUTE_HOME) { inclusive = false }
                         }
                     }
                 )
