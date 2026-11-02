@@ -549,7 +549,15 @@ fun ReminderListScreen(
                             androidx.compose.material3.Switch(
                                 // 绿=已启用/循环中（今天已完成也保持绿色）；灰=已关闭，不再响
                                 checked = r.enabled,
-                                onCheckedChange = { onToggle(r, it) }
+                                onCheckedChange = { onToggle(r, it) },
+                                colors = androidx.compose.material3.SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF34C759),
+                                    checkedBorderColor = Color(0xFF34C759),
+                                    uncheckedThumbColor = Color(0xFF98A2B3),
+                                    uncheckedTrackColor = Color(0xFFE4E7EC),
+                                    uncheckedBorderColor = Color(0xFFCBD2DA)
+                                )
                             )
                         }
                     )
