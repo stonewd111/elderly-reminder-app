@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -125,6 +127,7 @@ fun HomeScreen(
         ) {
             Row(
                 Modifier
+                    .height(IntrinsicSize.Min) // 录音按钮与左侧日期区等高（用户要求）
                     .background(
                         Brush.horizontalGradient(listOf(Color(0xFFEAF1FF), Color(0xFFF7FAFF)))
                     )
@@ -175,10 +178,11 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.width(12.dp))
-                // 录音按钮（右侧，约 38%），按压说话
+                // 录音按钮（右侧，约 38%），按压说话；与左侧日期区同高
                 Box(
                     Modifier
                         .weight(0.38f)
+                        .fillMaxHeight()
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (recording) Color(0xFF3B82F6) else Color(0xFF155EEF))
                         .pointerInput(Unit) {
@@ -192,16 +196,18 @@ fun HomeScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
-                        Modifier.padding(vertical = 10.dp),
+                        Modifier.padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             if (recording) "正在听…" else "按住说话",
                             color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Clip
                         )
                     }
                 }
@@ -308,14 +314,6 @@ fun HomeScreen(
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "说一句就好，例如：明天上午九点去医院拿报告",
-                fontSize = elderSp(14f),
-                color = TextSecondary,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
             Spacer(Modifier.height(24.dp))
         }
     }

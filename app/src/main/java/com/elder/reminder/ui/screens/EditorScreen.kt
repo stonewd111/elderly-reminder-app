@@ -215,7 +215,12 @@ fun EditorScreen(
                     Spacer(Modifier.height(18.dp))
                     Text("提醒时间", fontSize = elderSp(18f), fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.height(8.dp))
-                    Surface(shape = RoundedCornerShape(16.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                    // 日期/时间：绿色线框圈住（用户要求）
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        modifier = Modifier.fillMaxWidth().border(1.5.dp, Color(0xFF7BC67E), RoundedCornerShape(16.dp))
+                    ) {
                         Column {
                             // 日期/时间：value 用固定 19sp 且单行（fixedValue），
                             // 特大字体设置下日期也一行完整显示、不换行遮挡时间。
@@ -402,8 +407,17 @@ private fun ModeCard(
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(emoji, fontSize = elderSp(30f))
             Spacer(Modifier.height(6.dp))
-            Text(title, fontSize = elderSp(18f), fontWeight = FontWeight.Bold, color = if (highlighted) Color.White else TextPrimary)
-            Text(subtitle, fontSize = elderSp(13f), color = if (highlighted) Color(0xFFDCE7FF) else TextSecondary)
+            // title/subtitle 固定字号 + 单行：特大字体下两张卡片（语音录入/直接填写）保持等高，
+            // 不会因右侧 subtitle 换行而突然比左侧高出一块，从而挤占滚动区、把"删除这条提醒"挤出屏幕。
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = if (highlighted) Color.White else TextPrimary)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                fontSize = 13.sp,
+                color = if (highlighted) Color(0xFFDCE7FF) else TextSecondary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Clip
+            )
         }
     }
 }
@@ -427,26 +441,41 @@ private fun ModePill(text: String, selected: Boolean, modifier: Modifier = Modif
 
 @Composable
 private fun RepeatOptions(current: Reminder.Repeat, onChange: (Reminder.Repeat) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        RepeatRow("不重复", current is Reminder.Repeat.None) { onChange(Reminder.Repeat.None) }
-        RepeatRow("每天", current is Reminder.Repeat.Daily) { onChange(Reminder.Repeat.Daily) }
-        // 每周、每月同一排（用户要求）
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            RepeatRow("每周", current is Reminder.Repeat.Weekly, Modifier.weight(1f)) {
-                onChange(Reminder.Repeat.Weekly(setOf(1, 2, 3, 4, 5))) // 默认周一~周五
+    // 浅绿色线框圈住整组周期选项（用户要求）
+    androidx.compose.foundation.layout.Box(
+        Modifier
+            .fillMaxWidth()
+            .border(1.5.dp, Color(0xFF7BC67E), RoundedCornerShape(16.dp))
+            .padding(10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 不重复、每天同一排（用户要求：不重复左、每天右）
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                RepeatRow("不重复", current is Reminder.Repeat.None, Modifier.weight(1f)) {
+                    onChange(Reminder.Repeat.None)
+                }
+                RepeatRow("每天", current is Reminder.Repeat.Daily, Modifier.weight(1f)) {
+                    onChange(Reminder.Repeat.Daily)
+                }
             }
-            RepeatRow("每月", current is Reminder.Repeat.Monthly, Modifier.weight(1f)) {
-                onChange(Reminder.Repeat.Monthly(15)) // 默认 15 号
+            // 每周、每月同一排（用户要求）
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                RepeatRow("每周", current is Reminder.Repeat.Weekly, Modifier.weight(1f)) {
+                    onChange(Reminder.Repeat.Weekly(setOf(1, 2, 3, 4, 5))) // 默认周一~周五
+                }
+                RepeatRow("每月", current is Reminder.Repeat.Monthly, Modifier.weight(1f)) {
+                    onChange(Reminder.Repeat.Monthly(15)) // 默认 15 号
+                }
             }
-        }
-        RepeatRow("自定义间隔", current is Reminder.Repeat.Interval) { onChange(Reminder.Repeat.Interval(7)) } // 默认 7 天
+            RepeatRow("自定义间隔", current is Reminder.Repeat.Interval) { onChange(Reminder.Repeat.Interval(7)) } // 默认 7 天
 
-        // 选择行：点击"每周/每月/自定义间隔"时，下方选择行用红色粗线框住（做提醒）
-        when (val r = current) {
-            is Reminder.Repeat.Weekly -> HighlightedBox { WeekdayPicker(r.days) { onChange(Reminder.Repeat.Weekly(it)) } }
-            is Reminder.Repeat.Monthly -> HighlightedBox { NumberStepper("每月几号", r.day, 1..31) { onChange(Reminder.Repeat.Monthly(it)) } }
-            is Reminder.Repeat.Interval -> HighlightedBox { NumberStepper("每隔几天", r.days, 1..365) { onChange(Reminder.Repeat.Interval(it)) } }
-            else -> Unit
+            // 选择行：点击"每周/每月/自定义间隔"时，下方选择行用红色粗线框住（做提醒）
+            when (val r = current) {
+                is Reminder.Repeat.Weekly -> HighlightedBox { WeekdayPicker(r.days) { onChange(Reminder.Repeat.Weekly(it)) } }
+                is Reminder.Repeat.Monthly -> HighlightedBox { NumberStepper("每月几号", r.day, 1..31) { onChange(Reminder.Repeat.Monthly(it)) } }
+                is Reminder.Repeat.Interval -> HighlightedBox { NumberStepper("每隔几天", r.days, 1..365) { onChange(Reminder.Repeat.Interval(it)) } }
+                else -> Unit
+            }
         }
     }
 }

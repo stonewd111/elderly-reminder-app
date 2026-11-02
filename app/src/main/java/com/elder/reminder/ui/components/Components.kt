@@ -363,9 +363,19 @@ fun BigMicButton(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
+            // 内容（图标+文字）垂直排布在圆内，避免超出圆圈边缘：
+            // 图标缩小、文字固定字号不随缩放、行距收窄，确保"按住 说出提醒"整体落在 150dp 圆内。
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(46.dp))
-                Text(label, color = Color.White, fontSize = elderSp(18f), fontWeight = FontWeight.Medium)
+                Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(38.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    label,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Clip
+                )
             }
         }
     }
@@ -454,7 +464,7 @@ fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null, fixedVa
         )
         Text(
             value,
-            fontSize = if (fixedValue) 19.sp else elderSp(19f),
+            fontSize = if (fixedValue) 21.sp else elderSp(19f),
             color = TextPrimary,
             maxLines = if (fixedValue) 1 else Int.MAX_VALUE,
             overflow = TextOverflow.Clip,
