@@ -605,19 +605,22 @@ fun ReminderListScreen(
         ) { page ->
             val tab = ((page % tabCount) + tabCount) % tabCount
             val list = listFor(tab)
-            if (list.isEmpty()) {
-                Surface(shape = RoundedCornerShape(18.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(20.dp)) {
-                        Text("没有符合条件的提醒", fontSize = elderSp(18f), color = TextPrimary)
-                        Spacer(Modifier.height(4.dp))
-                        Text("点右上角 ＋ 新建一条提醒", fontSize = elderSp(15f), color = TextSecondary)
+            // 页面根布局必须撑满高度并顶部对齐，否则短列表会被 Pager 垂直居中，顶部出现大片空白
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (list.isEmpty()) {
+                    Surface(shape = RoundedCornerShape(18.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(20.dp)) {
+                            Text("没有符合条件的提醒", fontSize = elderSp(18f), color = TextPrimary)
+                            Spacer(Modifier.height(4.dp))
+                            Text("点右上角 ＋ 新建一条提醒", fontSize = elderSp(15f), color = TextSecondary)
+                        }
                     }
-                }
-            } else {
-                Column(
-                    Modifier.verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                } else {
                     list.forEachIndexed { idx, r ->
                         ReminderCard(
                             r,
@@ -647,8 +650,8 @@ fun ReminderListScreen(
                             }
                         )
                     }
-                    Spacer(Modifier.height(20.dp))
                 }
+                Spacer(Modifier.height(20.dp))
             }
         }
     }
