@@ -166,13 +166,26 @@ fun CategoryIconView(
     }
 }
 
-/** 分类对应的强调色（贴近样本：服药=橙、血压=紫、其他=蓝）。 */
-private fun categoryAccent(category: String): Color = when (category) {
-    Reminder.Category.MEDICATION -> Color(0xFFF79009)   // 服药=橙
-    Reminder.Category.HEALTH -> Color(0xFF7A5AF8)       // 血压=紫
-    Reminder.Category.EXERCISE -> Color(0xFF12B76A)     // 运动=绿
-    Reminder.Category.WATER -> Color(0xFF0EA5E9)        // 喝水=青蓝
-    else -> Color(0xFF2563EB)                            // 其他=蓝
+/**
+ * 分类对应的强调色（贴近样本：服药=橙、血压=紫、其他=蓝）。
+ * 自定义分类（other）若 label 含"运动"则映射为绿色，满足"自定义运动类=绿色"。
+ */
+private fun categoryAccent(r: Reminder): Color {
+    val category = r.category
+    if (category == Reminder.Category.OTHER) {
+        val label = r.categoryLabel
+        if (label.contains("运动")) return Color(0xFF12B76A)      // 自定义"运动"=绿
+        if (label.contains("血压") || label.contains("血糖")) return Color(0xFF7A5AF8) // 血压/血糖=紫
+        if (label.contains("服药") || label.contains("药")) return Color(0xFFF79009)   // 服药=橙
+        return Color(0xFF2563EB)                                  // 其他=蓝
+    }
+    return when (category) {
+        Reminder.Category.MEDICATION -> Color(0xFFF79009)   // 服药=橙
+        Reminder.Category.HEALTH -> Color(0xFF7A5AF8)       // 血压=紫
+        Reminder.Category.EXERCISE -> Color(0xFF12B76A)     // 运动=绿
+        Reminder.Category.WATER -> Color(0xFF0EA5E9)        // 喝水=青蓝
+        else -> Color(0xFF2563EB)                            // 其他=蓝
+    }
 }
 
 /**
@@ -192,7 +205,7 @@ fun ReminderCard(
     onLongPress: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
-    val catColor = categoryAccent(reminder.category)
+    val catColor = categoryAccent(reminder)
     // 兼顾日期与重复提醒：显示"下一次实际触发时间"的日期 + 时:分。
     // 重复提醒用 nextTrigger 算出真正的下次触发日（如下周一、下月15），单次用 triggerAt。
     val displayTimeMs = if (reminder.repeat != Reminder.Repeat.None) {

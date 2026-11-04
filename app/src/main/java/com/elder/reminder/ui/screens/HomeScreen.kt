@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -71,6 +72,7 @@ fun HomeScreen(
     items: List<Reminder>,
     recording: Boolean,
     onVoice: () -> Unit,
+    onText: () -> Unit,
     onEdit: (Reminder) -> Unit,
     onDelete: (Reminder) -> Unit,
     onMarkDone: (Reminder) -> Unit,
@@ -151,7 +153,7 @@ fun HomeScreen(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                dateTitle,
+                                "$dateTitle $weekday",
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = BlueDeep,
@@ -159,7 +161,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
-                                if (lunar.isNotBlank()) "$weekday · 农历$lunar" else weekday,
+                                lunar,
                                 fontSize = 12.sp,
                                 color = TextSecondary,
                                 maxLines = 1,
@@ -169,33 +171,26 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.width(12.dp))
-                // 录音按钮（右侧，约 38%），按压说话；与左侧日期区同高
+                // 文字录入按钮（右侧，缩短宽度给农历腾位置）：点击跳转编辑页，键盘直接输入
                 Box(
                     Modifier
-                        .weight(0.38f)
+                        .weight(0.30f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (recording) Color(0xFF3B82F6) else Color(0xFF155EEF))
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = {
-                                    onVoice()
-                                    tryAwaitRelease()
-                                }
-                            )
-                        },
+                        .clickable { onText() },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         Modifier.padding(horizontal = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
-                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Filled.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(5.dp))
                         Text(
-                            if (recording) "正在听…" else "按住说话",
+                            "文字录入",
                             color = Color.White,
-                            fontSize = 17.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Clip

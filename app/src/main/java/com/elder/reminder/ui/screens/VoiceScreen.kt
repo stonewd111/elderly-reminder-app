@@ -89,14 +89,15 @@ fun VoiceScreen(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp).weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
             Text(
                 "例如：明天上午九点去医院",
                 fontSize = 16.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )
-            Spacer(Modifier.height(36.dp))
+            // 弹性空间：把麦克风按钮下移到屏幕中下部
+            Spacer(Modifier.weight(1.2f))
             // 可按住说话的大按钮
             Box(
                 Modifier
@@ -146,7 +147,7 @@ fun VoiceScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.weight(0.8f))
             if (state.error != null) {
                 PrimaryButton("重试", onClick = { VoiceSession.reset() })
                 Spacer(Modifier.height(12.dp))

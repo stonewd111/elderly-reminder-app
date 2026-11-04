@@ -202,6 +202,7 @@ fun ElderApp() {
                     items = items,
                     recording = voice.active,
                     onVoice = { startVoice(null) },
+                    onText = { navController.navigate("editor?id=-1") },
                     onEdit = { navController.navigate("editor?id=${it.id}") },
                     onDelete = { r ->
                         ReminderScheduler.cancel(context, r.id)
