@@ -136,44 +136,32 @@ fun HomeScreen(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 日期区（左侧，约 60%）：两行，上"日期 星期"占满一行，下"图标 | 农历"
+                // 日期区（左侧，约 62%）：红色日历方框 + 日期/星期 + 农历（左右布局）
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
                     modifier = Modifier.weight(0.62f)
                 ) {
-                    Column {
-                        // 第一行：日期 + 星期，占满一行，字体固定
-                        Text(
-                            "$dateTitle $weekday",
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BlueDeep,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            maxLines = 1
-                        )
-                        // 分隔线
-                        Box(
-                            Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE5EAF3))
-                        )
-                        // 第二行：图标 | 农历
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) { Text("📅", fontSize = 18.sp) }
-                            Box(
-                                Modifier.width(1.dp).height(24.dp).background(Color(0xFFE5EAF3))
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 红色日历方框：工作日显示白色粗体数字 1~5，周末蓝色底显示"六/日"
+                        CalendarBadge()
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "$dateTitle $weekday",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = BlueDeep,
+                                maxLines = 1
                             )
+                            Spacer(Modifier.height(2.dp))
                             Text(
                                 if (lunar.isNotBlank()) "农历$lunar" else "",
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 color = TextSecondary,
-                                modifier = Modifier.weight(1.6f).padding(vertical = 6.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 maxLines = 1
                             )
                         }
@@ -359,6 +347,50 @@ fun HomeScreen(
             dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { markDoneTarget = null }) { Text("取消") }
             }
+        )
+    }
+}
+
+/**
+ * 红色日历方框徽标（首页日期区）：
+ *  - 工作日（周一~周五）：红色实心圆角方框 + 白色粗体数字 1~5（数字尽量大）
+ *  - 周末（周六/周日）：蓝色实心方框 + 白色粗体"六/日"
+ * 顶部有一条白色翻页条，模拟日历 App 图标。
+ */
+@Composable
+private fun CalendarBadge() {
+    val cal = Calendar.getInstance()
+    val dow = cal.get(Calendar.DAY_OF_WEEK)
+    val isWeekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY
+    val label = when (dow) {
+        Calendar.MONDAY -> "1"
+        Calendar.TUESDAY -> "2"
+        Calendar.WEDNESDAY -> "3"
+        Calendar.THURSDAY -> "4"
+        Calendar.FRIDAY -> "5"
+        Calendar.SATURDAY -> "六"
+        else -> "日"
+    }
+    Box(
+        Modifier.size(46.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (isWeekend) Color(0xFF2563EB) else Color(0xFFE5362F)),
+        contentAlignment = Alignment.Center
+    ) {
+        // 顶部白色翻页条
+        Box(
+            Modifier
+                .padding(top = 6.dp)
+                .width(34.dp).height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.85f))
+        )
+        // 中间数字 / "六"/"日"，白色粗体，统一字号（工作日与周末一致）
+        Text(
+            label,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.White,
+            modifier = Modifier.align(Alignment.Center).padding(top = 4.dp)
         )
     }
 }

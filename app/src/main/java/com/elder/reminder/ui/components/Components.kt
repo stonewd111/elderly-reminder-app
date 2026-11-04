@@ -215,7 +215,8 @@ fun ReminderCard(
             onLongClick = onLongPress
         )
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+        // 上下边距尽量缩小（8dp），最大化节省手机空间、单屏显示更多提醒
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             // ===== 第一行：整行高度与字号均固定，不随字体大小变化 =====
             Row(
                 Modifier.fillMaxWidth().height(32.dp),
@@ -309,18 +310,15 @@ fun ReminderCard(
 
             Spacer(Modifier.height(6.dp))
             // ===== 第二行：内容 =====
-            // 格式：日期(仅未来/全部) + 药品名(黑色粗体) + "：" + 提醒内容
-            // 日期放这里而非第一行，避免挤占次小类标签；此行为独立内容行，空间充足。
+            // 日期(仅未来/全部) + 药品名(黑色粗体) + "：" + 提醒内容。
+            // 策略：今天的提醒不显示"今天"（与"今天"页一致）；其他日期放到左边顶头
+            // 独立显示（蓝色小字、位置固定、规则醒目），提醒内容居中，不与日期混淆。
             val d = reminder.drug.trim()
             val t = reminder.title.trim()
             if (showDate || d.isNotBlank() || t.isNotBlank()) {
-                val annotated = buildAnnotatedString {
-                    if (showDate) {
-                        withStyle(
-                            SpanStyle(color = Color(0xFF4A7DBD)) // 淡蓝日期，辨识度高、无预警感
-                        ) { append(TimeFormats.dateBrief(displayTimeMs)) }
-                        append(" ")
-                    }
+                val dateText = if (showDate) TimeFormats.dateBrief(displayTimeMs) else ""
+                val showDateNow = showDate && dateText != "今天"
+                val content = buildAnnotatedString {
                     if (d.isNotBlank()) {
                         withStyle(
                             SpanStyle(
@@ -332,14 +330,40 @@ fun ReminderCard(
                     if (d.isNotBlank() && t.isNotBlank()) append("：")
                     append(t)
                 }
-                Text(
-                    annotated,
-                    fontSize = elderSp(18f),
-                    color = TextPrimary,
-                    maxLines = 2,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (showDateNow) {
+                    // 非今天日期：左边顶头显示，内容在右侧剩余空间居中
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            dateText,
+                            fontSize = elderSp(16f),
+                            color = Color(0xFF4A7DBD),
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.padding(end = 10.dp)
+                        )
+                        Text(
+                            content,
+                            fontSize = elderSp(18f),
+                            color = TextPrimary,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                } else {
+                    // 今天 / 无日期：内容整行居中
+                    Text(
+                        content,
+                        fontSize = elderSp(18f),
+                        color = TextPrimary,
+                        maxLines = 2,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
             // 重复提醒：内容下方补一行规律文案（每周 周一/三/五），便于区分日期与重复。
             if (reminder.repeat != Reminder.Repeat.None) {
