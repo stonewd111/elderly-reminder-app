@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +65,7 @@ import com.elder.reminder.ui.theme.BluePrimary
 import com.elder.reminder.ui.theme.TextPrimary
 import com.elder.reminder.ui.theme.TextSecondary
 import com.elder.reminder.ui.theme.elderSp
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -490,7 +494,6 @@ fun ReminderListScreen(
     onDeleteAllDone: () -> Unit,
     initialTab: Int = 0 // 0全部 1今天 2延误 3未来 4已完成
 ) {
-    var filter by remember { mutableStateOf(initialTab) } // 0全部 1今天 2延误 3未来 4已完成
     var confirmDelete by remember { mutableStateOf<Reminder?>(null) }
     var markDoneTarget by remember { mutableStateOf<Reminder?>(null) }
 
@@ -503,15 +506,24 @@ fun ReminderListScreen(
                 (it.repeat != Reminder.Repeat.None && !it.enabled) // 暂停中的重复提醒也留在此页
         }.sortedBy { if (it.doneAt > 0L) it.doneAt else it.triggerAt }
     }
+    val allList = remember(items) { sortedByTime(items) }
 
-    val shown = remember(items, filter) {
-        when (filter) {
-            1 -> todayList
-            2 -> delayedList
-            3 -> futureList
-            4 -> doneList
-            else -> sortedByTime(items)
-        }
+    // 五个页签无限循环：页数取超大值后对 5 取模，滑到最后一页继续滑即可回到"全部"
+    val tabCount = 5 // 0全部 1今天 2延误 3未来 4已完成
+    val startPage = remember(initialTab) {
+        val base = Int.MAX_VALUE / 2
+        base - base % tabCount + initialTab.coerceIn(0, tabCount - 1)
+    }
+    val pagerState = rememberPagerState(initialPage = startPage) { Int.MAX_VALUE }
+    val scope = rememberCoroutineScope()
+    val currentTab = ((pagerState.currentPage % tabCount) + tabCount) % tabCount
+
+    fun listFor(tab: Int): List<Reminder> = when (tab) {
+        1 -> todayList
+        2 -> delayedList
+        3 -> futureList
+        4 -> doneList
+        else -> allList
     }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F7FA)).padding(horizontal = 20.dp)) {
@@ -524,7 +536,7 @@ fun ReminderListScreen(
                 color = BlueDeep,
                 modifier = Modifier.weight(1f)
             )
-            if (filter == 4 && doneList.any { it.repeat == Reminder.Repeat.None }) {
+            if (currentTab == 4 && doneList.any { it.repeat == Reminder.Repeat.None }) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xFFFFE4E2),
@@ -558,11 +570,16 @@ fun ReminderListScreen(
                 "已完成" to null
             )
             tabs.forEachIndexed { index, (name, count) ->
-                val selected = filter == index
+                val selected = currentTab == index
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = if (selected) BluePrimary else Color.White,
-                    modifier = Modifier.weight(1f).height(36.dp).clickable { filter = index }
+                    modifier = Modifier.weight(1f).height(36.dp).clickable {
+                        // 点页签切页：朝最近方向滑动，避免回绕时跨过多页
+                        var delta = (index - currentTab + tabCount) % tabCount
+                        if (delta > tabCount / 2) delta -= tabCount
+                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + delta) }
+                    }
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
@@ -581,49 +598,57 @@ fun ReminderListScreen(
 
         Spacer(Modifier.height(14.dp))
 
-        if (shown.isEmpty()) {
-            Surface(shape = RoundedCornerShape(18.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("没有符合条件的提醒", fontSize = elderSp(18f), color = TextPrimary)
-                    Spacer(Modifier.height(4.dp))
-                    Text("点右上角 ＋ 新建一条提醒", fontSize = elderSp(15f), color = TextSecondary)
+        // 左右滑动切页：全部 → 今天 → 延误 → 未来 → 已完成 → 全部（无限循环）
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val tab = ((page % tabCount) + tabCount) % tabCount
+            val list = listFor(tab)
+            if (list.isEmpty()) {
+                Surface(shape = RoundedCornerShape(18.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text("没有符合条件的提醒", fontSize = elderSp(18f), color = TextPrimary)
+                        Spacer(Modifier.height(4.dp))
+                        Text("点右上角 ＋ 新建一条提醒", fontSize = elderSp(15f), color = TextSecondary)
+                    }
                 }
-            }
-        } else {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                shown.forEachIndexed { idx, r ->
-                    ReminderCard(
-                        r,
-                        index = idx + 1,
-                        // 日期仅在"全部 / 未来"tab 显示（用户要求：未来没有日期会混淆；今天/延误/已完成不需要）
-                        showDate = filter == 0 || filter == 3,
-                        onClick = { onEdit(r) },
-                        onDelete = { confirmDelete = r },
-                        // 长按重复提醒：手动补记"今天已完成"（用于完成记录丢失时补录）
-                        onLongPress = if (r.repeat != Reminder.Repeat.None) {
-                            { markDoneTarget = r }
-                        } else null,
-                        trailing = {
-                            androidx.compose.material3.Switch(
-                                // 绿=已启用/循环中（今天已完成也保持绿色）；灰=已关闭，不再响
-                                checked = r.enabled,
-                                onCheckedChange = { onToggle(r, it) },
-                                colors = androidx.compose.material3.SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF34C759),
-                                    checkedBorderColor = Color(0xFF34C759),
-                                    uncheckedThumbColor = Color(0xFF98A2B3),
-                                    uncheckedTrackColor = Color(0xFFE4E7EC),
-                                    uncheckedBorderColor = Color(0xFFCBD2DA)
+            } else {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    list.forEachIndexed { idx, r ->
+                        ReminderCard(
+                            r,
+                            index = idx + 1,
+                            // 日期仅在"全部 / 未来"tab 显示（用户要求：未来没有日期会混淆；今天/延误/已完成不需要）
+                            showDate = tab == 0 || tab == 3,
+                            onClick = { onEdit(r) },
+                            onDelete = { confirmDelete = r },
+                            // 长按重复提醒：手动补记"今天已完成"（用于完成记录丢失时补录）
+                            onLongPress = if (r.repeat != Reminder.Repeat.None) {
+                                { markDoneTarget = r }
+                            } else null,
+                            trailing = {
+                                androidx.compose.material3.Switch(
+                                    // 绿=已启用/循环中（今天已完成也保持绿色）；灰=已关闭，不再响
+                                    checked = r.enabled,
+                                    onCheckedChange = { onToggle(r, it) },
+                                    colors = androidx.compose.material3.SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF34C759),
+                                        checkedBorderColor = Color(0xFF34C759),
+                                        uncheckedThumbColor = Color(0xFF98A2B3),
+                                        uncheckedTrackColor = Color(0xFFE4E7EC),
+                                        uncheckedBorderColor = Color(0xFFCBD2DA)
+                                    )
                                 )
-                            )
-                        }
-                    )
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(20.dp))
                 }
-                Spacer(Modifier.height(20.dp))
             }
         }
     }
