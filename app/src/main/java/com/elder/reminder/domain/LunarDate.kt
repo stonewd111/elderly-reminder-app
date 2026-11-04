@@ -47,11 +47,12 @@ object LunarDate {
 
     private fun dayName(d: Int): String = when {
         d == 10 -> "初十"
-        d == 20 -> "二十"
+        d == 20 -> "廿"
         d == 30 -> "三十"
         d < 10 -> "初" + chineseNum(d.toString())
         d < 20 -> "十" + chineseNum((d - 10).toString())
-        else -> "二十" + chineseNum((d - 20).toString())
+        d < 30 -> "廿" + chineseNum((d - 20).toString())
+        else -> "三十" + chineseNum((d - 30).toString())
     }
 
     private fun chineseNum(n: String): String = n.toIntOrNull()?.let { chineseNum(it) } ?: n
