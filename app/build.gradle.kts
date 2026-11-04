@@ -21,8 +21,8 @@ android {
         applicationId = "com.elder.reminder"
         minSdk = 26
         targetSdk = 35
-        versionCode = 31
-        versionName = "1.8.3"
+        versionCode = 32
+        versionName = "1.8.4"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")

@@ -166,13 +166,13 @@ fun CategoryIconView(
     }
 }
 
-/** 分类对应的强调色。 */
+/** 分类对应的强调色（贴近样本：服药=橙、血压=紫、其他=蓝）。 */
 private fun categoryAccent(category: String): Color = when (category) {
-    Reminder.Category.MEDICATION -> BluePrimary
-    Reminder.Category.HEALTH -> GreenTag
-    Reminder.Category.EXERCISE -> OrangeTag
-    Reminder.Category.WATER -> Color(0xFF0EA5E9)
-    else -> PurpleTag
+    Reminder.Category.MEDICATION -> Color(0xFFF79009)   // 服药=橙
+    Reminder.Category.HEALTH -> Color(0xFF7A5AF8)       // 血压=紫
+    Reminder.Category.EXERCISE -> Color(0xFF12B76A)     // 运动=绿
+    Reminder.Category.WATER -> Color(0xFF0EA5E9)        // 喝水=青蓝
+    else -> Color(0xFF2563EB)                            // 其他=蓝
 }
 
 /**
@@ -192,11 +192,6 @@ fun ReminderCard(
     onLongPress: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
-    val accent = when (reminder.id % 3L) {
-        0L -> OrangeTag
-        1L -> GreenTag
-        else -> PurpleTag
-    }
     val catColor = categoryAccent(reminder.category)
     // 兼顾日期与重复提醒：显示"下一次实际触发时间"的日期 + 时:分。
     // 重复提醒用 nextTrigger 算出真正的下次触发日（如下周一、下月15），单次用 triggerAt。
@@ -227,7 +222,7 @@ fun ReminderCard(
                     reminder.category
                 )
                 Box(
-                    Modifier.size(28.dp).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
+                    Modifier.size(28.dp).clip(CircleShape).background(catColor.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     CategoryIconView(
@@ -338,8 +333,9 @@ fun ReminderCard(
                     ) {
                         Text(
                             dateText,
-                            fontSize = elderSp(16f),
-                            color = Color(0xFF4A7DBD),
+                            fontSize = elderSp(17f),
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2563EB),
                             maxLines = 1,
                             overflow = TextOverflow.Clip,
                             modifier = Modifier.padding(end = 10.dp)
@@ -401,18 +397,18 @@ fun categoryLabelOf(r: Reminder): String =
     if (r.category == Reminder.Category.OTHER && r.categoryLabel.isNotBlank()) r.categoryLabel
     else Reminder.Category.label(r.category)
 
-/** 固定字号标签（提醒卡片第一行专用）：不随字体大小缩放，高度紧贴文字。 */
+/** 固定字号标签（提醒卡片第一行专用）：不随字体大小缩放，高度紧贴文字。实心彩色背景+白字（参考样本）。 */
 @Composable
 private fun FixedTag(text: String, color: Color) {
     Surface(
         shape = RoundedCornerShape(6.dp),
-        color = color.copy(alpha = 0.12f)
+        color = color
     ) {
         Text(
             text,
             fontSize = 13.sp,
             lineHeight = 15.sp,
-            color = color,
+            color = Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)

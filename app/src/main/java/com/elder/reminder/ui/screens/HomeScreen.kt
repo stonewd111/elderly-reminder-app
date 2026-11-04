@@ -151,7 +151,7 @@ fun HomeScreen(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "$dateTitle $weekday",
+                                dateTitle,
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = BlueDeep,
@@ -159,10 +159,11 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
-                                if (lunar.isNotBlank()) "农历$lunar" else "",
+                                if (lunar.isNotBlank()) "$weekday · 农历$lunar" else weekday,
                                 fontSize = 12.sp,
                                 color = TextSecondary,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -376,21 +377,22 @@ private fun CalendarBadge() {
             .background(if (isWeekend) Color(0xFF2563EB) else Color(0xFFE5362F)),
         contentAlignment = Alignment.Center
     ) {
-        // 顶部白色翻页条
+        // 顶部白色翻页条：紧贴方框上缘（不遮挡中间数字）
         Box(
             Modifier
-                .padding(top = 6.dp)
-                .width(34.dp).height(4.dp)
+                .align(Alignment.TopCenter)
+                .padding(top = 5.dp)
+                .width(30.dp).height(5.dp)
                 .clip(RoundedCornerShape(2.dp))
                 .background(Color.White.copy(alpha = 0.85f))
         )
         // 中间数字 / "六"/"日"，白色粗体，统一字号（工作日与周末一致）
         Text(
             label,
-            fontSize = 22.sp,
+            fontSize = 21.sp,
             fontWeight = FontWeight.ExtraBold,
             color = Color.White,
-            modifier = Modifier.align(Alignment.Center).padding(top = 4.dp)
+            modifier = Modifier.align(Alignment.Center).padding(top = 6.dp)
         )
     }
 }
