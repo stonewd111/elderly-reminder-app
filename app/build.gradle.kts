@@ -14,6 +14,10 @@ android {
             storePassword = "elder2026"
             keyAlias = "elder"
             keyPassword = "elder2026"
+            // 开启 v1(JAR) + v2 双签名：AGP 对 minSdk≥24 默认只打 v2，
+            // 导致部分系统/应用市场只认 v1 的校验工具提示"没有签名文件"。
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 
@@ -21,8 +25,8 @@ android {
         applicationId = "com.elder.reminder"
         minSdk = 26
         targetSdk = 35
-        versionCode = 37
-        versionName = "1.8.9"
+        versionCode = 38
+        versionName = "1.8.10"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
