@@ -384,6 +384,29 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
     }
     // OPPO/ColorOS 厂商专属“锁屏显示”权限（无法在安装时预授权，需系统运行时判定）
     val isColorOS = remember { com.elder.reminder.alarm.LockscreenGuide.isColorOS(context) }
+    // 精确闹钟权限：被拒时 setAlarmClock 会抛异常并静默降级为非精确闹钟，
+    // Doze 下可能推迟很久甚至不响——这是"放几小时后不提醒"的关键排查点。
+    val exactOk = remember {
+        if (Build.VERSION.SDK_INT >= 31) {
+            (context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+        } else true
+    }
+    val batteryOk = remember {
+        (context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+            .isIgnoringBatteryOptimizations(context.packageName)
+    }
+    val fmt = remember { java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA) }
+    // 系统里真正挂着的下一个闹钟 + 本应用应触发的最近一条，两者对不上就说明闹钟被系统清掉了
+    val sysNext = remember {
+        (context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager)
+            .nextAlarmClock?.triggerTime?.let { fmt.format(java.util.Date(it)) } ?: "无"
+    }
+    val appNext = remember {
+        val now = System.currentTimeMillis()
+        ReminderRepository.all().filter { it.enabled }
+            .mapNotNull { ReminderScheduler.nextTrigger(it, now) }
+            .minOrNull()?.let { fmt.format(java.util.Date(it)) } ?: "无"
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -424,12 +447,25 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                         com.elder.reminder.alarm.LockscreenGuide.openLockscreenSetting(context)
                     }
                 }
-                SettingRow("🔋 忽略电池优化") {
+                SettingRow("🔋 忽略电池优化${if (batteryOk) "（已开启）" else "（未开启）"}") {
                     open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
                 }
-                SettingRow("⏰ 精确闹钟") {
+                SettingRow("⏰ 精确闹钟${if (exactOk) "（已开启）" else "（未开启）"}") {
                     open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")))
                 }
+                if (!exactOk) {
+                    Text("⚠️ 精确闹钟未开启——会退化成非精确闹钟，手机放几小时后可能不响或延后很久",
+                        fontSize = 14.sp, color = Color(0xFFE5362F))
+                    Spacer(Modifier.height(6.dp))
+                }
+                if (!batteryOk) {
+                    Text("⚠️ 未忽略电池优化——系统/OEM 可能在后台冻结本应用并清掉闹钟",
+                        fontSize = 14.sp, color = Color(0xFFE5362F))
+                    Spacer(Modifier.height(6.dp))
+                }
+                Text("🩺 闹钟自检：系统下次 $sysNext　｜　本应用应触发 $appNext",
+                    fontSize = 13.sp, color = Color(0xFF667085))
+                Spacer(Modifier.height(6.dp))
                 SettingRow("🎤 麦克风权限") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
                 }
