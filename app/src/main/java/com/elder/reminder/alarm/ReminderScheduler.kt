@@ -5,35 +5,54 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.elder.reminder.AlarmTrace
 import com.elder.reminder.model.Reminder
 import com.elder.reminder.model.repeatText
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 /**
  * 使用 AlarmManager 精确定时。优先 setAlarmClock（最可靠，可穿透 Doze，状态栏显示闹钟图标）。
  */
 object ReminderScheduler {
 
+    private val TIME_FMT = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
+
     fun schedule(context: Context, reminder: Reminder) {
         cancel(context, reminder.id)
         // 重复提醒的 done 只代表"本次已完成"，不影响下一次排期；单次提醒完成即不再排
         if (!reminder.enabled || (reminder.done && reminder.repeat == Reminder.Repeat.None)) return
-        val fireAt = nextTrigger(reminder, System.currentTimeMillis()) ?: return
+        val fireAt = nextTrigger(reminder, System.currentTimeMillis())
+        if (fireAt == null) {
+            AlarmTrace.add(context, "⚠️ 算不出下次时间，未排期「${reminder.title}」")
+            return
+        }
 
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val alarmPi = pendingIntent(context, reminder.id)
         val showPi = showIntent(context, reminder)
+        val at = TIME_FMT.format(java.util.Date(fireAt))
         try {
             am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showPi), alarmPi)
-        } catch (_: Exception) {
+            AlarmTrace.add(context, "⏰ 已挂闹钟「${reminder.title}」→ $at（setAlarmClock）")
+        } catch (e: Exception) {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, alarmPi)
                 } else {
                     am.setExact(AlarmManager.RTC_WAKEUP, fireAt, alarmPi)
                 }
-            } catch (_: SecurityException) {
+                AlarmTrace.add(
+                    context,
+                    "⏰ 已挂闹钟「${reminder.title}」→ $at（降级 setExact，原因 ${e.javaClass.simpleName}）"
+                )
+            } catch (e2: SecurityException) {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, alarmPi)
+                AlarmTrace.add(
+                    context,
+                    "⚠️ 已挂闹钟「${reminder.title}」→ $at（降级为非精确，可能延后，原因 ${e2.javaClass.simpleName}）"
+                )
             }
         }
     }

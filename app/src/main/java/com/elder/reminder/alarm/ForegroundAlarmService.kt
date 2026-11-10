@@ -23,6 +23,7 @@ import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.elder.reminder.AlarmTrace
 import com.elder.reminder.R
 import com.elder.reminder.data.ReminderRepository
 import com.elder.reminder.data.SoundPrefs
@@ -127,6 +128,8 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
                     startedAt = System.currentTimeMillis()
                     stopped = false
                     playingStarted = false
+                    // ④ 服务真正跑起来了：有这条说明广播和前台服务都成功，问题只剩播报本身
+                    AlarmTrace.add(this, "④ 播报服务已进入前台 id=$id")
                     maxAlarmVolume()
                     startVibration()
                     // 应用在前台时立即弹红色全屏页；后台交给 fullScreenIntent 兜底
@@ -152,7 +155,10 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
     private fun playByPrefs(soundType: String, soundUri: String) {
         if (stopped) return
         // 仅振动：不发声（振动已在 start 时启动）
-        if (soundType == SOUND_VIBRATE) return
+        if (soundType == SOUND_VIBRATE) {
+            AlarmTrace.add(this, "⑤ 按设置仅振动，不发声")
+            return
+        }
         val type = if (soundType.isBlank()) SoundPrefs.effectiveType() else soundType
         val ok = when (type) {
             SoundPrefs.TYPE_CUSTOM -> startCustomLoop(
@@ -162,11 +168,19 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
             SoundPrefs.TYPE_FEMALE -> startResourceLoop(R.raw.alarm_voice)
             else -> startPlayerLoop()
         }
-        if (ok) return
+        if (ok) {
+            AlarmTrace.add(this, "⑤ 已经开始出声，方式=$type")
+            return
+        }
+        AlarmTrace.add(this, "⑤ 首选音效 $type 播放失败，走降级")
         // 降级链：custom→系统闹铃→TTS→滴滴
-        if (type == SoundPrefs.TYPE_CUSTOM && startPlayerLoop()) return
+        if (type == SoundPrefs.TYPE_CUSTOM && startPlayerLoop()) {
+            AlarmTrace.add(this, "⑤ 已降级为系统闹铃声")
+            return
+        }
         handler.post {
             if (stopped) return@post
+            AlarmTrace.add(this, "⑤ 已降级为语音播报(TTS)")
             tts = TextToSpeech(this, this)
         }
     }
@@ -401,6 +415,7 @@ class ForegroundAlarmService : Service(), TextToSpeech.OnInitListener {
 
     private fun stopAll() {
         if (stopped) return
+        AlarmTrace.add(this, "⑥ 播报结束，未点已完成的记为延误")
         markDelayedAll()
         stopped = true
         handler.removeCallbacksAndMessages(null)

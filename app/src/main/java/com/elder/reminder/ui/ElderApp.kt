@@ -1,6 +1,8 @@
 package com.elder.reminder.ui
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -43,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -52,6 +55,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.elder.reminder.AlarmTrace
 import com.elder.reminder.alarm.ReminderScheduler
 import com.elder.reminder.asr.VoiceSession
 import com.elder.reminder.data.FontPrefs
@@ -407,6 +411,8 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
             .mapNotNull { ReminderScheduler.nextTrigger(it, now) }
             .minOrNull()?.let { fmt.format(java.util.Date(it)) } ?: "无"
     }
+    // 闹钟触发记录：看"该响没响"卡在哪一环（①广播 ②处理 ③起服务 ④服务在前台 ⑤出声 ⑥结束）
+    var trace by remember { mutableStateOf(AlarmTrace.latest(context, 12)) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -465,6 +471,23 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                 }
                 Text("🩺 闹钟自检：系统下次 $sysNext　｜　本应用应触发 $appNext",
                     fontSize = 13.sp, color = Color(0xFF667085))
+                Spacer(Modifier.height(8.dp))
+                Text("📝 闹钟触发记录（最近 12 条）", fontSize = 13.sp, color = Color(0xFF667085))
+                Text(
+                    trace.ifBlank { "暂无记录（还没触发过闹钟）" },
+                    fontSize = 11.sp, color = Color(0xFF344054), fontFamily = FontFamily.Monospace
+                )
+                Row {
+                    TextButton(onClick = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        cm.setPrimaryClip(ClipData.newPlainText("闹钟触发记录", trace))
+                        Toast.makeText(context, "记录已复制", Toast.LENGTH_SHORT).show()
+                    }) { Text("复制记录", color = BluePrimary) }
+                    TextButton(onClick = {
+                        AlarmTrace.clear(context)
+                        trace = ""
+                    }) { Text("清空", color = BluePrimary) }
+                }
                 Spacer(Modifier.height(6.dp))
                 SettingRow("🎤 麦克风权限") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
