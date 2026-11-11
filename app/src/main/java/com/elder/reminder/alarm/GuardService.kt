@@ -98,7 +98,9 @@ class GuardService : Service() {
             if (due > now - MISSED_GRACE_MS) return@forEach // 刚到点，可能还在派发
 
             if (now - due > CATCH_UP_MS) {
-                // 错过太久：不补响，只标记为延误，让用户看得见
+                // 错过太久：不补响，只标记为延误，让用户看得见。
+                // 但只处理"今天该响的那次"——昨天的旧账不翻，否则会把今天还没到点的提醒也挪进延误。
+                if (r.repeat != Reminder.Repeat.None && !ReminderScheduler.sameDay(due, now)) return@forEach
                 val marked = if (r.repeat == Reminder.Repeat.None) {
                     r.copy(delayed = true, triggered = false, enabled = false)
                 } else {

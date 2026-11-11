@@ -97,6 +97,14 @@ object ReminderScheduler {
         return last
     }
 
+    /** 两个时间戳是否落在同一自然日（本地时区）。 */
+    fun sameDay(a: Long, b: Long): Boolean {
+        val ca = java.util.Calendar.getInstance().apply { timeInMillis = a }
+        val cb = java.util.Calendar.getInstance().apply { timeInMillis = b }
+        return ca.get(java.util.Calendar.YEAR) == cb.get(java.util.Calendar.YEAR) &&
+            ca.get(java.util.Calendar.DAY_OF_YEAR) == cb.get(java.util.Calendar.DAY_OF_YEAR)
+    }
+
     fun nextTrigger(reminder: Reminder, after: Long): Long? {
         val c = Calendar.getInstance()
         when (val repeat = reminder.repeat) {

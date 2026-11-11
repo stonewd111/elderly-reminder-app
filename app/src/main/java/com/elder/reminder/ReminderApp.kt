@@ -47,11 +47,24 @@ class ReminderApp : Application() {
     internal fun markMissedAlarms() {
         val now = System.currentTimeMillis()
         ReminderRepository.all().forEach { r ->
-            if (!r.enabled || r.delayed || r.isDoneNow(now)) return@forEach
+            if (!r.enabled) return@forEach
+            // 自愈：重复提醒若标着延误、但今天还有一次没到点，说明那笔延误是过去某天误标的，
+            // 清掉让它回到「今天」，否则今晚该响的提醒会一直藏在延误里。
+            if (r.repeat != Reminder.Repeat.None && r.delayed) {
+                val next = ReminderScheduler.nextTrigger(r, now)
+                if (next != null && ReminderScheduler.sameDay(next, now)) {
+                    ReminderRepository.upsert(r.copy(delayed = false))
+                    return@forEach
+                }
+            }
+            if (r.delayed || r.isDoneNow(now)) return@forEach
             // 按周期规则反推"最近一次本应响的时刻"。重复提醒的 triggerAt 不会前进，不能直接用它判断。
             val due = ReminderScheduler.lastDueBefore(r, now) ?: return@forEach
             if (r.lastFiredAt >= due) return@forEach          // 这次确实响过
             if (due > now - MISSED_GRACE_MS) return@forEach    // 刚到点，可能还在派发
+            // 重复提醒只补记"今天该响的那次"。若最近一次漏报是昨天/更早，说明那笔旧账不该翻，
+            // 否则会把今天还没到点的提醒也标成延误、从「今天」里挪走。
+            if (r.repeat != Reminder.Repeat.None && !ReminderScheduler.sameDay(due, now)) return@forEach
             when {
                 // 单次：从未响过或响过没处理 → 记延误并停用
                 r.repeat == Reminder.Repeat.None ->
