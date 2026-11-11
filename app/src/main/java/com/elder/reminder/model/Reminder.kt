@@ -37,7 +37,13 @@ data class Reminder(
     /** 自定义铃声的 content URI（soundType==custom 时有效，需已持久化读授权） */
     val soundUri: String = "",
     /** 自定义铃声显示名（仅用于界面展示） */
-    val soundName: String = ""
+    val soundName: String = "",
+    /**
+     * 最近一次真正响铃的时刻（由 AlarmReceiver 写入）。
+     * 有了它才能判断"某次该响却没响"：与 [com.elder.reminder.alarm.ReminderScheduler.lastDueBefore]
+     * 算出的应响时刻比较，前者更早就说明漏报。
+     */
+    val lastFiredAt: Long = 0L
 ) {
     enum class Mode { VOICE, BEEP }
 
@@ -94,6 +100,7 @@ data class Reminder(
         put("soundType", soundType)
         put("soundUri", soundUri)
         put("soundName", soundName)
+        put("lastFiredAt", lastFiredAt)
         put("repeat", repeatToJson(repeat))
     }
 
@@ -116,7 +123,8 @@ data class Reminder(
             doneAt = o.optLong("doneAt", 0L),
             soundType = o.optString("soundType", ""),
             soundUri = o.optString("soundUri", ""),
-            soundName = o.optString("soundName", "")
+            soundName = o.optString("soundName", ""),
+            lastFiredAt = o.optLong("lastFiredAt", 0L)
         )
 
         private fun repeatToJson(r: Repeat): JSONObject = JSONObject().apply {

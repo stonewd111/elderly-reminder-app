@@ -9,6 +9,7 @@ import com.elder.reminder.data.FontPrefs
 import com.elder.reminder.data.ReminderRepository
 import com.elder.reminder.data.SoundPrefs
 import com.elder.reminder.model.Reminder
+import com.elder.reminder.model.isDoneNow
 
 class ReminderApp : Application() {
     override fun onCreate() {
@@ -46,16 +47,19 @@ class ReminderApp : Application() {
     internal fun markMissedAlarms() {
         val now = System.currentTimeMillis()
         ReminderRepository.all().forEach { r ->
-            if (r.done || r.delayed) return@forEach
-            if (r.triggerAt > now - MISSED_GRACE_MS) return@forEach
+            if (!r.enabled || r.delayed || r.isDoneNow(now)) return@forEach
+            // 按周期规则反推"最近一次本应响的时刻"。重复提醒的 triggerAt 不会前进，不能直接用它判断。
+            val due = ReminderScheduler.lastDueBefore(r, now) ?: return@forEach
+            if (r.lastFiredAt >= due) return@forEach          // 这次确实响过
+            if (due > now - MISSED_GRACE_MS) return@forEach    // 刚到点，可能还在派发
             when {
-                // 单次：响过没处理，或早已过点却从未响过（强停/关机期间错过）
-                r.repeat == Reminder.Repeat.None && (r.triggered || r.enabled) ->
+                // 单次：从未响过或响过没处理 → 记延误并停用
+                r.repeat == Reminder.Repeat.None ->
                     ReminderRepository.upsert(
                         r.copy(delayed = true, triggered = false, enabled = false)
                     )
-                // 重复：响过没处理 → 本次记延误；enabled 保持不变，后续照常提醒
-                r.repeat != Reminder.Repeat.None && r.enabled && r.triggered ->
+                // 重复：本次漏了 → 记延误；enabled 不变，后续周期照常提醒
+                else ->
                     ReminderRepository.upsert(
                         r.copy(delayed = true, triggered = false, done = false, doneAt = 0L)
                     )

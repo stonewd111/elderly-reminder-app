@@ -16,6 +16,9 @@ class MainActivity : ComponentActivity() {
         // 用户打开界面时做一次漏报自检。不能放到 Application.onCreate：
         // 闹钟到点会先起进程、再派发 AlarmReceiver，提前判延误会让到点提醒不响。
         (application as? ReminderApp)?.markMissedAlarms()
+        // 常驻守护：抬进程优先级（OEM 不易冻结并清掉闹钟）+ 每 30 秒补报漏掉的提醒。
+        // 必须在前台（Activity 里）启动，后台启动前台服务在 Android 12+ 会被拒。
+        com.elder.reminder.alarm.GuardService.start(this)
         val crash = CrashLog.latest(this)
         if (crash != null) {
             // 上次启动崩溃：显示错误信息页，方便用户反馈，避免再次闪退

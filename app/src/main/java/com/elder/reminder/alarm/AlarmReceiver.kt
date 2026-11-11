@@ -36,13 +36,15 @@ class AlarmReceiver : BroadcastReceiver() {
         // 重复提醒：调度下次（用下次时间副本给调度器，不写回仓库，保留本次状态供显示）；
         //          同时把上一轮的"本次已完成/延误"状态清掉，自动重新进入队列。
         if (reminder.repeat != Reminder.Repeat.None) {
-            val next = ReminderScheduler.nextTrigger(reminder, System.currentTimeMillis() + 1000)
+            val now = System.currentTimeMillis()
+            val next = ReminderScheduler.nextTrigger(reminder, now + 1000)
             if (next != null) {
                 ReminderScheduler.schedule(context, reminder.copy(triggerAt = next))
                 ReminderRepository.upsert(
                     reminder.copy(
                         triggered = true, enabled = true,
-                        done = false, doneAt = 0L, delayed = false
+                        done = false, doneAt = 0L, delayed = false,
+                        lastFiredAt = now
                     )
                 )
                 AlarmTrace.add(context, "② 重复提醒已排下次「${reminder.title}」")
@@ -50,7 +52,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 AlarmTrace.add(context, "② 重复提醒算不出下次时间「${reminder.title}」")
             }
         } else {
-            ReminderRepository.upsert(reminder.copy(triggered = true, enabled = false))
+            ReminderRepository.upsert(
+                reminder.copy(triggered = true, enabled = false, lastFiredAt = System.currentTimeMillis())
+            )
         }
 
         // 1) 先启动前台播报服务：保证锁屏/后台一定有声音，并由服务统一发全屏通知+弹页（核心修复）。

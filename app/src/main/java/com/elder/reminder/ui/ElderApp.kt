@@ -413,6 +413,8 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
     }
     // 闹钟触发记录：看"该响没响"卡在哪一环（①广播 ②处理 ③起服务 ④服务在前台 ⑤出声 ⑥结束）
     var trace by remember { mutableStateOf(AlarmTrace.latest(context, 12)) }
+    // 常驻守护是否在跑：不在跑说明进程已被系统清掉，闹钟也就没人兜底了
+    val guardOk = remember { com.elder.reminder.alarm.GuardService.isRunning(context) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -488,6 +490,13 @@ private fun SettingsDialog(context: Context, onDismiss: () -> Unit) {
                         trace = ""
                     }) { Text("清空", color = BluePrimary) }
                 }
+                Spacer(Modifier.height(6.dp))
+                SettingRow("🛡 提醒守护${if (guardOk) "（运行中）" else "（未运行，点此启动）"}") {
+                    com.elder.reminder.alarm.GuardService.start(context)
+                    Toast.makeText(context, "已请求启动守护", Toast.LENGTH_SHORT).show()
+                }
+                Text("守护会常驻一条静音通知：进程不易被系统冻结，每 30 秒补报漏掉的提醒",
+                    fontSize = 12.sp, color = Color(0xFF667085))
                 Spacer(Modifier.height(6.dp))
                 SettingRow("🎤 麦克风权限") {
                     open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))

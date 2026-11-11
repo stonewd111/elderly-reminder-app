@@ -14,6 +14,8 @@ class BootReceiver : BroadcastReceiver() {
                 com.elder.reminder.AlarmTrace.add(context, "🔄 系统事件 ${intent.action}，重新排全部闹钟")
                 com.elder.reminder.data.ReminderRepository.reload()
                 ReminderScheduler.rescheduleAll(context)
+                // 开机/更新后把守护服务拉起来（BOOT_COMPLETED、MY_PACKAGE_REPLACED 属于前台服务启动豁免场景）
+                GuardService.start(context)
             }
         }
     }

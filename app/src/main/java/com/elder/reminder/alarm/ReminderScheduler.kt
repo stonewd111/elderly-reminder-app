@@ -19,13 +19,16 @@ object ReminderScheduler {
 
     private val TIME_FMT = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
 
-    fun schedule(context: Context, reminder: Reminder) {
+    fun schedule(context: Context, reminder: Reminder, trace: Boolean = true) {
+        fun log(msg: String) {
+            if (trace) AlarmTrace.add(context, msg)
+        }
         cancel(context, reminder.id)
         // 重复提醒的 done 只代表"本次已完成"，不影响下一次排期；单次提醒完成即不再排
         if (!reminder.enabled || (reminder.done && reminder.repeat == Reminder.Repeat.None)) return
         val fireAt = nextTrigger(reminder, System.currentTimeMillis())
         if (fireAt == null) {
-            AlarmTrace.add(context, "⚠️ 算不出下次时间，未排期「${reminder.title}」")
+            log("⚠️ 算不出下次时间，未排期「${reminder.title}」")
             return
         }
 
@@ -35,7 +38,7 @@ object ReminderScheduler {
         val at = TIME_FMT.format(java.util.Date(fireAt))
         try {
             am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showPi), alarmPi)
-            AlarmTrace.add(context, "⏰ 已挂闹钟「${reminder.title}」→ $at（setAlarmClock）")
+            log("⏰ 已挂闹钟「${reminder.title}」→ $at（setAlarmClock）")
         } catch (e: Exception) {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -43,16 +46,10 @@ object ReminderScheduler {
                 } else {
                     am.setExact(AlarmManager.RTC_WAKEUP, fireAt, alarmPi)
                 }
-                AlarmTrace.add(
-                    context,
-                    "⏰ 已挂闹钟「${reminder.title}」→ $at（降级 setExact，原因 ${e.javaClass.simpleName}）"
-                )
+                log("⏰ 已挂闹钟「${reminder.title}」→ $at（降级 setExact，原因 ${e.javaClass.simpleName}）")
             } catch (e2: SecurityException) {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, alarmPi)
-                AlarmTrace.add(
-                    context,
-                    "⚠️ 已挂闹钟「${reminder.title}」→ $at（降级为非精确，可能延后，原因 ${e2.javaClass.simpleName}）"
-                )
+                log("⚠️ 已挂闹钟「${reminder.title}」→ $at（降级为非精确，可能延后，原因 ${e2.javaClass.simpleName}）")
             }
         }
     }
@@ -66,6 +63,38 @@ object ReminderScheduler {
         // 只跳过被人工暂停（enabled=false）的提醒；重复提醒即使本次已完成也要继续排下一次
         ReminderRepositoryHolder.repo().filter { it.enabled }
             .forEach { schedule(context, it) }
+    }
+
+    /**
+     * 守护式重排：进程还活着时定期把所有闹钟重新挂一遍，
+     * 修复被 OEM 清理/冻结时清掉的 AlarmManager 项。
+     * 跳过马上要响的（[minAheadMs] 内不动），避免把正在派发的广播取消掉。
+     */
+    fun rearm(context: Context, minAheadMs: Long = 5 * 60 * 1000L) {
+        val now = System.currentTimeMillis()
+        ReminderRepositoryHolder.repo().forEach { r ->
+            val next = nextTrigger(r, now) ?: return@forEach
+            if (next - now < minAheadMs) return@forEach
+            schedule(context, r, trace = false)
+        }
+    }
+
+    /**
+     * 最近一次"本应已经响过"的时刻（严格 <= now）。没有则返回 null。
+     * 重复提醒的 triggerAt 只在创建时定过，之后不会前进，所以不能直接拿 triggerAt 判断漏报，
+     * 必须按周期规则把最近一次到点时刻反推出来。
+     */
+    fun lastDueBefore(reminder: Reminder, now: Long, lookBackDays: Int = 40): Long? {
+        var cursor = now - lookBackDays * 24L * 60L * 60L * 1000L
+        var last: Long? = null
+        var i = 0
+        while (i++ < 400) {
+            val next = nextTrigger(reminder, cursor) ?: return last
+            if (next > now) return last
+            last = next
+            cursor = next
+        }
+        return last
     }
 
     fun nextTrigger(reminder: Reminder, after: Long): Long? {
