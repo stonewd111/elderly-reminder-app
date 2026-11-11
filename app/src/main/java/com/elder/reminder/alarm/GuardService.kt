@@ -94,6 +94,7 @@ class GuardService : Service() {
         ReminderRepository.all().forEach { r ->
             if (!r.enabled || r.delayed || r.isDoneNow(now)) return@forEach
             val due = ReminderScheduler.lastDueBefore(r, now) ?: return@forEach
+            if (due <= r.createdAt) return@forEach         // 这条例提醒建立之前的那次，不存在漏报
             if (r.lastFiredAt >= due) return@forEach      // 这次确实响过
             if (due > now - MISSED_GRACE_MS) return@forEach // 刚到点，可能还在派发
 

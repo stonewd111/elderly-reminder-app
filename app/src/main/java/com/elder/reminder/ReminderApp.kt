@@ -60,6 +60,7 @@ class ReminderApp : Application() {
             if (r.delayed || r.isDoneNow(now)) return@forEach
             // 按周期规则反推"最近一次本应响的时刻"。重复提醒的 triggerAt 不会前进，不能直接用它判断。
             val due = ReminderScheduler.lastDueBefore(r, now) ?: return@forEach
+            if (due <= r.createdAt) return@forEach             // 这条例提醒建立之前的那次，不存在漏报
             if (r.lastFiredAt >= due) return@forEach          // 这次确实响过
             if (due > now - MISSED_GRACE_MS) return@forEach    // 刚到点，可能还在派发
             // 重复提醒只补记"今天该响的那次"。若最近一次漏报是昨天/更早，说明那笔旧账不该翻，
