@@ -19,6 +19,12 @@ object ReminderScheduler {
 
     private val TIME_FMT = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
 
+    /** 兜底闹钟比主闹钟晚多少毫秒触发。 */
+    private const val BACKUP_DELAY_MS = 60 * 1000L
+
+    /** 兜底闹钟的 requestCode 偏移，避免与主闹钟（id.hashCode()）冲突。 */
+    private const val BACKUP_REQUEST_OFFSET = 0x5B5B00
+
     fun schedule(context: Context, reminder: Reminder, trace: Boolean = true) {
         fun log(msg: String) {
             if (trace) AlarmTrace.add(context, msg)
@@ -52,11 +58,21 @@ object ReminderScheduler {
                 log("⚠️ 已挂闹钟「${reminder.title}」→ $at（降级为非精确，可能延后，原因 ${e2.javaClass.simpleName}）")
             }
         }
+        // 兜底闹钟：主闹钟万一被 OEM 丢弃/严重延迟，60 秒后再兜一次。
+        // 用独立 requestCode，不会覆盖主闹钟；主闹钟正常响过之后，这条会被 schedule/cancel 取消。
+        runCatching {
+            am.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                fireAt + BACKUP_DELAY_MS,
+                backupIntent(context, reminder.id)
+            )
+        }
     }
 
     fun cancel(context: Context, id: Long) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.cancel(pendingIntent(context, id))
+        am.cancel(backupIntent(context, id))
     }
 
     fun rescheduleAll(context: Context) {
@@ -177,6 +193,20 @@ object ReminderScheduler {
         val intent = Intent(context, AlarmReceiver::class.java).putExtra(AlarmReceiver.EXTRA_ID, id)
         return PendingIntent.getBroadcast(
             context, id.hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /**
+     * 兜底闹钟的 PendingIntent。requestCode 与主闹钟不同，两者互不覆盖；
+     * 额外带上 [AlarmReceiver.EXTRA_BACKUP]，接收器据此做去重。
+     */
+    private fun backupIntent(context: Context, id: Long): PendingIntent {
+        val intent = Intent(context, AlarmReceiver::class.java)
+            .putExtra(AlarmReceiver.EXTRA_ID, id)
+            .putExtra(AlarmReceiver.EXTRA_BACKUP, true)
+        return PendingIntent.getBroadcast(
+            context, BACKUP_REQUEST_OFFSET + id.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }

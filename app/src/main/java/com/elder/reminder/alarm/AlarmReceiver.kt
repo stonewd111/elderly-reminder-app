@@ -18,8 +18,12 @@ class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getLongExtra(EXTRA_ID, -1L)
+        val isBackup = intent.getBooleanExtra(EXTRA_BACKUP, false)
         // ① 收到广播就立刻记一笔：没有这条就说明闹钟根本没触发
-        AlarmTrace.add(context, "① 收到闹钟广播 id=$id")
+        AlarmTrace.add(
+            context,
+            if (isBackup) "① 收到兜底闹钟 id=$id" else "① 收到闹钟广播 id=$id"
+        )
         val reminder = ReminderRepository.find(id)
         if (reminder == null) {
             AlarmTrace.add(context, "② 中止：仓库里找不到该提醒 id=$id")
@@ -28,6 +32,24 @@ class AlarmReceiver : BroadcastReceiver() {
         if (!reminder.enabled) {
             AlarmTrace.add(context, "② 中止：提醒已被停用「${reminder.title}」")
             return
+        }
+        // 兜底闹钟去重：主闹钟已在 10 分钟内正常响过，就不再响第二遍
+        if (isBackup && System.currentTimeMillis() - reminder.lastFiredAt < BACKUP_DEDUPE_MS) {
+            AlarmTrace.add(context, "② 兜底闹钟：主闹钟已响过，忽略「${reminder.title}」")
+            return
+        }
+        // 迟到观测：重复提醒按规则反推"最近一次该响的时刻"，只记录不改排期
+        if (!isBackup && reminder.repeat != Reminder.Repeat.None) {
+            val now0 = System.currentTimeMillis()
+            val due = ReminderScheduler.lastDueBefore(reminder, now0)
+            if (due != null && now0 - due > 2 * 60 * 1000L) {
+                val hm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
+                    .format(java.util.Date(due))
+                AlarmTrace.add(
+                    context,
+                    "① 本次迟到 ${(now0 - due) / 60000} 分钟送达（系统延迟，原定 $hm；下次仍按原定时间排）"
+                )
+            }
         }
 
         // 先标记"已触发"（本次响铃中/已响过），待用户处理：
@@ -77,6 +99,10 @@ class AlarmReceiver : BroadcastReceiver() {
 
     companion object {
         const val EXTRA_ID = "reminder_id"
+        const val EXTRA_BACKUP = "reminder_backup"
         const val CHANNEL_ID = "elder_alarm"
+
+        /** 兜底闹钟的去重窗口：主闹钟在这个时间内响过就不再重复响。 */
+        private const val BACKUP_DEDUPE_MS = 10 * 60 * 1000L
     }
 }
