@@ -38,18 +38,40 @@ class AlarmReceiver : BroadcastReceiver() {
             AlarmTrace.add(context, "② 兜底闹钟：主闹钟已响过，忽略「${reminder.title}」")
             return
         }
+        val now = System.currentTimeMillis()
+        // 重复广播保护：同一条提醒 5 分钟内响过就不再响。
+        // OEM 有时会把同一次闹钟派发两遍，或者守护补响后真正的广播才姗姗来迟。
+        if (reminder.lastFiredAt > 0 && now - reminder.lastFiredAt < 5 * 60 * 1000L) {
+            AlarmTrace.add(context, "② 刚刚响过，忽略重复广播「${reminder.title}」")
+            return
+        }
+        val due = ReminderScheduler.lastDueBefore(reminder, now)
+
+        // 早到保护：系统（尤其 ColorOS）偶发把闹钟提前或重复派发。
+        // 距下次到点还有 30 秒以上、且最近一次到点已经过去 1 小时以上的广播，
+        // 一定不是"到点"，直接忽略并重新挂回去，避免提前响。
+        val upcoming = ReminderScheduler.nextTrigger(reminder, now)
+        if (upcoming != null && upcoming - now in 30_001..600_000L &&
+            (due == null || now - due > 60 * 60 * 1000L)
+        ) {
+            AlarmTrace.add(
+                context,
+                "② 早到 ${(upcoming - now) / 1000} 秒，忽略并重挂「${reminder.title}」"
+            )
+            ReminderScheduler.schedule(context, reminder)
+            return
+        }
+
         // 迟到观测：重复提醒按规则反推"最近一次该响的时刻"，只记录不改排期
-        if (!isBackup && reminder.repeat != Reminder.Repeat.None) {
-            val now0 = System.currentTimeMillis()
-            val due = ReminderScheduler.lastDueBefore(reminder, now0)
-            if (due != null && now0 - due > 2 * 60 * 1000L) {
-                val hm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
-                    .format(java.util.Date(due))
-                AlarmTrace.add(
-                    context,
-                    "① 本次迟到 ${(now0 - due) / 60000} 分钟送达（系统延迟，原定 $hm；下次仍按原定时间排）"
-                )
-            }
+        if (!isBackup && reminder.repeat != Reminder.Repeat.None && due != null &&
+            now - due > 2 * 60 * 1000L
+        ) {
+            val hm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
+                .format(java.util.Date(due))
+            AlarmTrace.add(
+                context,
+                "① 本次迟到 ${(now - due) / 60000} 分钟送达（系统延迟，原定 $hm；下次仍按原定时间排）"
+            )
         }
 
         // 先标记"已触发"（本次响铃中/已响过），待用户处理：
@@ -58,7 +80,6 @@ class AlarmReceiver : BroadcastReceiver() {
         // 重复提醒：调度下次（用下次时间副本给调度器，不写回仓库，保留本次状态供显示）；
         //          同时把上一轮的"本次已完成/延误"状态清掉，自动重新进入队列。
         if (reminder.repeat != Reminder.Repeat.None) {
-            val now = System.currentTimeMillis()
             val next = ReminderScheduler.nextTrigger(reminder, now + 1000)
             if (next != null) {
                 ReminderScheduler.schedule(context, reminder.copy(triggerAt = next))
